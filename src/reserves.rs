@@ -27,15 +27,10 @@ use bdk::bitcoin::hashes::{hash160, sha256d, Hash};
 use bdk::bitcoin::util::address::Payload;
 use bdk::bitcoin::util::psbt::{Input, PartiallySignedTransaction as PSBT};
 use bdk::bitcoin::{Address, Network};
-use bdk::blockchain::Blockchain;
 use bdk::database::BatchDatabase;
 use bdk::wallet::tx_builder::TxOrdering;
 use bdk::wallet::Wallet;
 use bdk::Error;
-
-//#[allow(unused_imports)]
-//use log::{debug, error, info, trace};
-
 
 /// The API for proof of reserves
 pub trait ProofOfReserves {
@@ -99,7 +94,6 @@ impl From<ProofError> for bdk::Error {
 impl<B, D> ProofOfReserves for Wallet<B, D>
 where
     D: BatchDatabase,
-    B: Blockchain,
 {
     fn create_proof(&self, message: &str) -> Result<PSBT, Error> {
         let challenge_txin = challenge_txin(message);
@@ -125,7 +119,7 @@ where
             .add_foreign_utxo(challenge_txin.previous_output, challenge_psbt_inp, 42)?
             .fee_absolute(0)
             .only_witness_utxo()
-            .set_single_recipient(out_script_unspendable)
+            .drain_to(out_script_unspendable)
             .ordering(TxOrdering::Untouched);
         let (psbt, _details) = builder.finish().unwrap();
 
@@ -212,10 +206,7 @@ pub fn verify_proof(
             &serialized_tx,
             0,
         ) {
-            return Err(ProofError::SignatureValidation(
-                0,
-                format!("{:?}", err),
-            ));
+            return Err(ProofError::SignatureValidation(0, format!("{:?}", err)));
         }
     } else {
         return Err(ProofError::SignatureValidation(
@@ -302,68 +293,15 @@ fn challenge_txin(message: &str) -> TxIn {
 #[cfg(test)]
 mod test {
     use super::*;
-    use bdk::bitcoin;
     use bdk::bitcoin::secp256k1::Secp256k1;
     use bdk::bitcoin::util::key::{PrivateKey, PublicKey};
     use bdk::bitcoin::Network;
-    use bdk::bitcoin::Transaction;
     use bdk::blockchain::{noop_progress, ElectrumBlockchain};
     use bdk::database::memory::MemoryDatabase;
-    use bdk::database::BatchOperations;
     use bdk::electrum_client::Client;
-    use bdk::miniscript;
-    use bdk::LocalUtxo;
-    use bdk::KeychainKind;
+    use bdk::wallet::{get_funded_wallet, AddressIndex};
     use bdk::SignOptions;
-    use bdk::TransactionDetails;
     use rstest::rstest;
-    use testutils::testutils;
-    use std::str::FromStr;
-
-    fn get_funded_wallet(
-        descriptor: &str,
-    ) -> (
-        Wallet<(), MemoryDatabase>,
-        (String, Option<String>),
-        bitcoin::Txid,
-    ) {
-        let descriptors = testutils!(@descriptors (descriptor));
-        let wallet = Wallet::new_offline(
-            &descriptors.0,
-            None,
-            Network::Regtest,
-            MemoryDatabase::new(),
-        )
-        .unwrap();
-
-        let funding_address_kix = 0;
-
-        let tx_meta = testutils! {
-                @tx ( (@external descriptors, funding_address_kix) => 50_000 ) (@confirmations 1)
-        };
-
-        wallet
-            .database
-            .borrow_mut()
-            .set_script_pubkey(
-                &bitcoin::Address::from_str(&tx_meta.output.get(0).unwrap().to_address)
-                    .unwrap()
-                    .script_pubkey(),
-                KeychainKind::External,
-                funding_address_kix,
-            )
-            .unwrap();
-        wallet
-            .database
-            .borrow_mut()
-            .set_last_index(KeychainKind::External, funding_address_kix)
-            .unwrap();
-
-        let txid = bdk::populate_test_db!(wallet.database.borrow_mut(), tx_meta, Some(100));
-
-        (wallet, descriptors, txid)
-    }
-
 
     #[rstest(
         descriptor,
@@ -405,7 +343,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Proof(ChallengeInputMismatch)")]
+    #[should_panic(expected = "ChallengeInputMismatch")]
     fn tampered_proof_message() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
         let (wallet, _, _) = get_funded_wallet(descriptor);
@@ -439,7 +377,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Proof(UnsupportedSighashType(1)")]
+    #[should_panic(expected = "UnsupportedSighashType(1)")]
     fn tampered_proof_sighash_tx() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
         let (wallet, _, _) = get_funded_wallet(descriptor);
@@ -462,7 +400,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Proof(InAndOutValueNotEqual)")]
+    #[should_panic(expected = "InAndOutValueNotEqual")]
     fn tampered_proof_miner_fee() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
         let (wallet, _, _) = get_funded_wallet(descriptor);
@@ -494,7 +432,7 @@ mod test {
         signer: &PrivateKey,
         pubkeys: &[PublicKey],
         script_type: &MultisigType,
-    ) -> Result<Wallet<ElectrumBlockchain, MemoryDatabase>, ProofError> {
+    ) -> Result<Wallet<ElectrumBlockchain, MemoryDatabase>, Error> {
         let secp = Secp256k1::new();
         let pub_derived = signer.public_key(&secp);
 
@@ -563,9 +501,18 @@ mod test {
         let wallet1 = construct_multisig_wallet(&signer1, &pubkeys, &script_type)?;
         let wallet2 = construct_multisig_wallet(&signer2, &pubkeys, &script_type)?;
         let wallet3 = construct_multisig_wallet(&signer3, &pubkeys, &script_type)?;
-        assert_eq!(wallet1.get_new_address()?.to_string(), expected_address);
-        assert_eq!(wallet2.get_new_address()?.to_string(), expected_address);
-        assert_eq!(wallet3.get_new_address()?.to_string(), expected_address);
+        assert_eq!(
+            wallet1.get_address(AddressIndex::New)?.to_string(),
+            expected_address
+        );
+        assert_eq!(
+            wallet2.get_address(AddressIndex::New)?.to_string(),
+            expected_address
+        );
+        assert_eq!(
+            wallet3.get_address(AddressIndex::New)?.to_string(),
+            expected_address
+        );
         let balance = wallet1.get_balance()?;
         assert!(
             (410000..=420000).contains(&balance),

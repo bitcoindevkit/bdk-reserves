@@ -9,7 +9,7 @@ readme = "README.md"
 license = "MIT OR Apache-2.0"
 
 [dependencies]
-bdk = {version = "^0.9", features = ["electrum"] }
+bdk = { git = "https://github.com/ulrichard/bdk/", branch = "feature/expose_testutils", features = ["electrum"] }
 bitcoinconsensus = "0.19.0-3"
 base64 = "^0.11"
 log = "^0.4"
