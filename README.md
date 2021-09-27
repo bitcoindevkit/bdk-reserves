@@ -9,7 +9,8 @@
 
   <p>
     <a href="https://crates.io/crates/bdk-reserves"><img alt="Crate Info" src="https://img.shields.io/crates/v/bdk-reserves.svg"/></a>
-    <a href="https://github.com/bitcoindevkit/bdk/blob/master/LICENSE"><img alt="MIT or Apache-2.0 Licensed" src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg"/></a>
+    <a href="https://github.com/ulrichard/bdk-reserves/blob/master/LICENSE"><img alt="MIT or Apache-2.0 Licensed" src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg"/></a>
+    <a href="https://github.com/ulrichard/bdk-reserves/actions?query=workflow%3ACI"><img alt="CI Status" src="https://github.com/ulrichard/bdk-reserves/workflows/CI/badge.svg"></a>
     <a href="https://docs.rs/bdk-reserves"><img alt="API Docs" src="https://img.shields.io/badge/docs.rs-bdk-reserves-green"/></a>
     <a href="https://blog.rust-lang.org/2020/08/27/Rust-1.46.0.html"><img alt="Rustc Version 1.46+" src="https://img.shields.io/badge/rustc-1.46%2B-lightgrey.svg"/></a>
     <a href="https://discord.gg/d7NkDKm"><img alt="Chat on Discord" src="https://img.shields.io/discord/753336465005608961?logo=discord"></a>
