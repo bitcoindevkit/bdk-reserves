@@ -334,7 +334,7 @@ mod test {
             .iter()
             .fold(0, |acc, i| acc + i.partial_sigs.len());
         assert_eq!(num_sigs, num_inp - 1);
-        assert_eq!(finalized, true);
+        assert!(finalized);
 
         let spendable = wallet.verify_proof(&psbt, &message)?;
         assert_eq!(spendable, balance);
@@ -551,14 +551,14 @@ mod test {
         };
         let finalized = wallet1.sign(&mut psbt, signopts.clone())?;
         assert_eq!(count_signatures(&psbt), (num_inp - 1, 1, 0));
-        assert_eq!(finalized, false);
+        assert!(!finalized);
 
         let finalized = wallet2.sign(&mut psbt, signopts.clone())?;
         assert_eq!(
             count_signatures(&psbt),
             ((num_inp - 1) * 2, num_inp, num_inp - 1)
         );
-        assert_eq!(finalized, true);
+        assert!(finalized);
 
         // 2 signatures are enough. Just checking what happens...
         let finalized = wallet3.sign(&mut psbt, signopts.clone())?;
@@ -566,14 +566,14 @@ mod test {
             count_signatures(&psbt),
             ((num_inp - 1) * 2, num_inp, num_inp - 1)
         );
-        assert_eq!(finalized, true);
+        assert!(finalized);
 
         let finalized = wallet1.finalize_psbt(&mut psbt, signopts)?;
         assert_eq!(
             count_signatures(&psbt),
             ((num_inp - 1) * 2, num_inp, num_inp - 1)
         );
-        assert_eq!(finalized, true);
+        assert!(finalized);
 
         let spendable = wallet1.verify_proof(&psbt, &message)?;
         assert_eq!(spendable, balance);
