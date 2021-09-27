@@ -102,7 +102,7 @@ where
                 value: 0,
                 script_pubkey: Builder::new().push_opcode(opcodes::OP_TRUE).into_script(),
             }),
-            final_script_sig: Some(Script::default()), // "finalize" the input with an empty scriptSig
+            final_script_sig: Some(Script::default()), /* "finalize" the input with an empty scriptSig */
             ..Default::default()
         };
 
