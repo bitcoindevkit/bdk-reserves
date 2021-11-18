@@ -35,7 +35,7 @@ use bdk::Error;
 /// The API for proof of reserves
 pub trait ProofOfReserves {
     /// Create a proof for all spendable UTXOs in a wallet
-    fn create_proof(&self, message: &str) -> Result<PSBT, Error>;
+    fn create_proof(&self, message: &str) -> Result<PSBT, ProofError>;
 
     /// Make sure this is a proof, and not a spendable transaction.
     /// Make sure the proof is valid.
@@ -47,7 +47,7 @@ pub trait ProofOfReserves {
 }
 
 /// Proof error
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ProofError {
     /// Less than two inputs
     WrongNumberOfInputs,
@@ -95,7 +95,7 @@ impl<B, D> ProofOfReserves for Wallet<B, D>
 where
     D: BatchDatabase,
 {
-    fn create_proof(&self, message: &str) -> Result<PSBT, Error> {
+    fn create_proof(&self, message: &str) -> Result<PSBT, ProofError> {
         let challenge_txin = challenge_txin(message);
         let challenge_psbt_inp = Input {
             witness_utxo: Some(TxOut {
@@ -121,17 +121,14 @@ where
             .only_witness_utxo()
             .drain_to(out_script_unspendable)
             .ordering(TxOrdering::Untouched);
-        let (psbt, _details) = builder.finish().unwrap();
+        let (psbt, _details) = builder.finish().map_err(|e| ProofError::BdkError(e))?;
 
         Ok(psbt)
     }
 
     fn verify_proof(&self, psbt: &PSBT, message: &str) -> Result<u64, ProofError> {
         // verify the proof UTXOs are still spendable
-        let unspents = match self.list_unspent() {
-            Ok(utxos) => utxos,
-            Err(err) => return Err(ProofError::BdkError(err)),
-        };
+        let unspents = self.list_unspent().map_err(|e| ProofError::BdkError(e))?;
         let outpoints = unspents
             .iter()
             .map(|utxo| (utxo.outpoint, utxo.txout.clone()))
