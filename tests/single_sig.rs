@@ -3,13 +3,11 @@ use bdk::SignOptions;
 use bdk_reserves::reserves::*;
 use rstest::rstest;
 
-#[rstest(
-    descriptor,
-    case("wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)"),
-    case("wsh(and_v(v:pk(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW),older(6)))"),     // and(pk(Alice),older(6))
-    case("wsh(and_v(v:pk(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW),after(100000)))") // and(pk(Alice),after(100000))
-)]
-fn test_proof(descriptor: &'static str) -> Result<(), ProofError> {
+#[rstest]
+#[case("wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)")]
+#[case("wsh(and_v(v:pk(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW),older(6)))")] // and(pk(Alice),older(6))
+#[case("wsh(and_v(v:pk(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW),after(100000)))")] // and(pk(Alice),after(100000))
+fn test_proof(#[case] descriptor: &'static str) -> Result<(), ProofError> {
     let (wallet, _, _) = get_funded_wallet(descriptor);
     let balance = wallet.get_balance()?;
 

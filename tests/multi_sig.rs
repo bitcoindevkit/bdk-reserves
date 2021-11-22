@@ -59,19 +59,16 @@ fn construct_multisig_wallet(
     Ok(wallet)
 }
 
-#[rstest(
-    script_type,
-    expected_address,
-    case(
-        MultisigType::Wsh,
-        "tb1qnmhmxkaqqz4lrruhew5mk6zqr0ezstn3stj6c3r2my6hgkescm0sg3qc0r"
-    ),
-    case(MultisigType::ShWsh, "2NDTiUegP4NwKMnxXm6KdCL1B1WHamhZHC1"),
-    case(MultisigType::P2sh, "2N7yrzYXgQzNQQuHNTjcP3iwpzFVsqe6non")
+#[rstest]
+#[case(
+    MultisigType::Wsh,
+    "tb1qnmhmxkaqqz4lrruhew5mk6zqr0ezstn3stj6c3r2my6hgkescm0sg3qc0r"
 )]
+#[case(MultisigType::ShWsh, "2NDTiUegP4NwKMnxXm6KdCL1B1WHamhZHC1")]
+#[case(MultisigType::P2sh, "2N7yrzYXgQzNQQuHNTjcP3iwpzFVsqe6non")]
 fn test_proof_multisig(
-    script_type: MultisigType,
-    expected_address: &'static str,
+    #[case] script_type: MultisigType,
+    #[case] expected_address: &'static str,
 ) -> Result<(), ProofError> {
     let signer1 =
         PrivateKey::from_wif("cQCi6JdidZN5HeiHhjE7zZAJ1XJrZbj6MmpVPx8Ri3Kc8UjPgfbn").unwrap();

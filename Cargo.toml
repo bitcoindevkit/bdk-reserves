@@ -16,5 +16,5 @@ base64 = "^0.11"
 log = "^0.4"
 
 [dev-dependencies]
-rstest = "^0.7"
+rstest = "^0.11"
 bdk-testutils = "^0.4"
