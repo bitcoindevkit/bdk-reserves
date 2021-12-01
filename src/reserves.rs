@@ -42,8 +42,14 @@ pub trait ProofOfReserves {
     /// Currently proofs can only be validated against the tip of the chain.
     /// If some of the UTXOs in the proof were spent in the meantime, the proof will fail.
     /// We can currently not validate whether it was valid at a certain block height.
+    /// With the max_block_height parameter the caller can ensure that only UTXOs with sufficient confirmations are considered.
     /// Returns the spendable amount of the proof.
-    fn verify_proof(&self, psbt: &PSBT, message: &str) -> Result<u64, ProofError>;
+    fn verify_proof(
+        &self,
+        psbt: &PSBT,
+        message: &str,
+        max_block_height: Option<u32>,
+    ) -> Result<u64, ProofError>;
 }
 
 /// Proof error
@@ -71,6 +77,8 @@ pub enum ProofError {
     InAndOutValueNotEqual,
     /// No matching outpoint found
     OutpointNotFound(usize),
+    /// Failed to retrieve the block height of a Tx or UTXO
+    MissingConfirmationInfo,
     /// A wrapped BDK Error
     BdkError(Error),
 }
@@ -129,15 +137,33 @@ where
         Ok(psbt)
     }
 
-    fn verify_proof(&self, psbt: &PSBT, message: &str) -> Result<u64, ProofError> {
+    fn verify_proof(
+        &self,
+        psbt: &PSBT,
+        message: &str,
+        max_block_height: Option<u32>,
+    ) -> Result<u64, ProofError> {
         // verify the proof UTXOs are still spendable
         let unspents = match self.list_unspent() {
             Ok(utxos) => utxos,
             Err(err) => return Err(ProofError::BdkError(err)),
         };
+        let unspents = unspents
+            .iter()
+            .map(|utxo| {
+                let tx_details = self.get_tx(&utxo.outpoint.txid, false)?;
+                if let Some(tx_details) = tx_details {
+                    if let Some(conf_time) = tx_details.confirmation_time {
+                        return Ok((utxo, conf_time.height));
+                    }
+                }
+                Err(ProofError::MissingConfirmationInfo)
+            })
+            .collect::<Result<Vec<_>, ProofError>>()?;
         let outpoints = unspents
             .iter()
-            .map(|utxo| (utxo.outpoint, utxo.txout.clone()))
+            .filter(|(_utxo, block_height)| *block_height <= max_block_height.unwrap_or(u32::MAX))
+            .map(|(utxo, _)| (utxo.outpoint, utxo.txout.clone()))
             .collect();
 
         verify_proof(psbt, message, outpoints, self.network())
@@ -149,6 +175,7 @@ where
 /// Currently proofs can only be validated against the tip of the chain.
 /// If some of the UTXOs in the proof were spent in the meantime, the proof will fail.
 /// We can currently not validate whether it was valid at a certain block height.
+/// Since the caller provides the outpoints, he is also responsible to make sure they have enough confirmations.
 /// Returns the spendable amount of the proof.
 pub fn verify_proof(
     psbt: &PSBT,
@@ -346,7 +373,30 @@ mod tests {
 
         let message = "This belongs to me.";
         let psbt = get_signed_proof();
-        let spendable = wallet.verify_proof(&psbt, message).unwrap();
+        let spendable = wallet.verify_proof(&psbt, message, None).unwrap();
+        assert_eq!(spendable, 50_000);
+    }
+
+    #[test]
+    #[should_panic(expected = "NonSpendableInput")]
+    fn verify_internal_90() {
+        let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
+        let (wallet, _, _) = get_funded_wallet(descriptor);
+
+        let message = "This belongs to me.";
+        let psbt = get_signed_proof();
+        let spendable = wallet.verify_proof(&psbt, message, Some(90)).unwrap();
+        assert_eq!(spendable, 50_000);
+    }
+
+    #[test]
+    fn verify_internal_100() {
+        let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
+        let (wallet, _, _) = get_funded_wallet(descriptor);
+
+        let message = "This belongs to me.";
+        let psbt = get_signed_proof();
+        let spendable = wallet.verify_proof(&psbt, message, Some(100)).unwrap();
         assert_eq!(spendable, 50_000);
     }
 
@@ -375,7 +425,7 @@ mod tests {
 
         let message = "Wrong message!";
         let psbt = get_signed_proof();
-        wallet.verify_proof(&psbt, message).unwrap();
+        wallet.verify_proof(&psbt, message, None).unwrap();
     }
 
     #[test]
@@ -389,7 +439,7 @@ mod tests {
         psbt.global.unsigned_tx.input.truncate(1);
         psbt.inputs.truncate(1);
 
-        wallet.verify_proof(&psbt, message).unwrap();
+        wallet.verify_proof(&psbt, message, None).unwrap();
     }
 
     #[test]
@@ -403,7 +453,7 @@ mod tests {
         psbt.global.unsigned_tx.output.clear();
         psbt.inputs.clear();
 
-        wallet.verify_proof(&psbt, message).unwrap();
+        wallet.verify_proof(&psbt, message, None).unwrap();
     }
 
     #[test]
@@ -417,7 +467,7 @@ mod tests {
         psbt.inputs[1].final_script_sig = None;
         psbt.inputs[1].final_script_witness = None;
 
-        wallet.verify_proof(&psbt, message).unwrap();
+        wallet.verify_proof(&psbt, message, None).unwrap();
     }
 
     #[test]
@@ -430,7 +480,7 @@ mod tests {
         let mut psbt = get_signed_proof();
         psbt.inputs[1].sighash_type = Some(SigHashType::SinglePlusAnyoneCanPay);
 
-        wallet.verify_proof(&psbt, message).unwrap();
+        wallet.verify_proof(&psbt, message, None).unwrap();
     }
 
     #[test]
@@ -450,7 +500,7 @@ mod tests {
         .script_pubkey();
         psbt.global.unsigned_tx.output[0].script_pubkey = out_script_unspendable;
 
-        wallet.verify_proof(&psbt, message).unwrap();
+        wallet.verify_proof(&psbt, message, None).unwrap();
     }
 
     #[test]
@@ -463,6 +513,6 @@ mod tests {
         let mut psbt = get_signed_proof();
         psbt.global.unsigned_tx.output[0].value = 123;
 
-        wallet.verify_proof(&psbt, message).unwrap();
+        wallet.verify_proof(&psbt, message, None).unwrap();
     }
 }

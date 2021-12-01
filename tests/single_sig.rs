@@ -34,7 +34,7 @@ fn test_proof(#[case] descriptor: &'static str) -> Result<(), ProofError> {
     assert_eq!(num_sigs, num_inp - 1);
     assert!(finalized);
 
-    let spendable = wallet.verify_proof(&psbt, &message)?;
+    let spendable = wallet.verify_proof(&psbt, &message, None)?;
     assert_eq!(spendable, balance);
 
     Ok(())

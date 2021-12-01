@@ -19,7 +19,9 @@ fn tampered_proof_message() {
     };
     let _finalized = wallet.sign(&mut psbt_alice, signopt).unwrap();
 
-    let spendable = wallet.verify_proof(&psbt_alice, &message_alice).unwrap();
+    let spendable = wallet
+        .verify_proof(&psbt_alice, &message_alice, None)
+        .unwrap();
     assert_eq!(spendable, balance);
 
     // change the message
@@ -29,8 +31,8 @@ fn tampered_proof_message() {
         psbt_bob.global.unsigned_tx.input[0].previous_output;
     psbt_alice.inputs[0].witness_utxo = psbt_bob.inputs[0].witness_utxo.clone();
 
-    let res_alice = wallet.verify_proof(&psbt_alice, &message_alice);
-    let res_bob = wallet.verify_proof(&psbt_alice, &message_bob);
+    let res_alice = wallet.verify_proof(&psbt_alice, &message_alice, None);
+    let res_bob = wallet.verify_proof(&psbt_alice, &message_bob, None);
     assert!(res_alice.is_err());
     assert!(!res_bob.is_err());
     res_alice.unwrap();
@@ -57,7 +59,7 @@ fn tampered_proof_sighash_tx() {
 
     let _finalized = wallet.sign(&mut psbt, signopt).unwrap();
 
-    let _spendable = wallet.verify_proof(&psbt, &message).unwrap();
+    let _spendable = wallet.verify_proof(&psbt, &message, None).unwrap();
 }
 
 #[test]
@@ -80,5 +82,5 @@ fn tampered_proof_miner_fee() {
 
     let _finalized = wallet.sign(&mut psbt, signopt).unwrap();
 
-    let _spendable = wallet.verify_proof(&psbt, &message).unwrap();
+    let _spendable = wallet.verify_proof(&psbt, &message, None).unwrap();
 }
