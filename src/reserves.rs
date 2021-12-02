@@ -43,6 +43,7 @@ pub trait ProofOfReserves {
     /// If some of the UTXOs in the proof were spent in the meantime, the proof will fail.
     /// We can currently not validate whether it was valid at a certain block height.
     /// With the max_block_height parameter the caller can ensure that only UTXOs with sufficient confirmations are considered.
+    /// If no max_block_height is provided, also UTXOs from transactions in the mempool are considered.
     /// Returns the spendable amount of the proof.
     fn verify_proof(
         &self,
@@ -151,18 +152,27 @@ where
         let unspents = unspents
             .iter()
             .map(|utxo| {
-                let tx_details = self.get_tx(&utxo.outpoint.txid, false)?;
-                if let Some(tx_details) = tx_details {
-                    if let Some(conf_time) = tx_details.confirmation_time {
-                        return Ok((utxo, conf_time.height));
+                if max_block_height.is_none() {
+                    Ok((utxo, None))
+                } else {
+                    let tx_details = self.get_tx(&utxo.outpoint.txid, false)?;
+                    if let Some(tx_details) = tx_details {
+                        if let Some(conf_time) = tx_details.confirmation_time {
+                            Ok((utxo, Some(conf_time.height)))
+                        } else {
+                            Ok((utxo, None))
+                        }
+                    } else {
+                        Err(ProofError::MissingConfirmationInfo)
                     }
                 }
-                Err(ProofError::MissingConfirmationInfo)
             })
             .collect::<Result<Vec<_>, ProofError>>()?;
         let outpoints = unspents
             .iter()
-            .filter(|(_utxo, block_height)| *block_height <= max_block_height.unwrap_or(u32::MAX))
+            .filter(|(_utxo, block_height)| {
+                block_height.unwrap_or(u32::MAX) <= max_block_height.unwrap_or(u32::MAX)
+            })
             .map(|(utxo, _)| (utxo.outpoint, utxo.txout.clone()))
             .collect();
 
@@ -321,7 +331,7 @@ fn challenge_txin(message: &str) -> TxIn {
 }
 
 #[cfg(test)]
-mod tests {
+mod test {
     use super::*;
     use bdk::bitcoin::consensus::encode::deserialize;
     use bdk::bitcoin::{Address, Network};
