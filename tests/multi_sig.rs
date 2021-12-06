@@ -161,7 +161,7 @@ fn test_proof_multisig(
     );
     assert!(finalized);
 
-    let spendable = wallet1.verify_proof(&psbt, &message, None)?;
+    let spendable = wallet1.verify_proof(&psbt, message, None)?;
     assert_eq!(spendable, balance);
 
     Ok(())

@@ -58,11 +58,11 @@ fn unconfirmed() -> Result<(), ProofError> {
     assert_ne!(balance, new_balance);
 
     let message = "This belongs to me.";
-    let mut psbt = wallet.create_proof(&message)?;
+    let mut psbt = wallet.create_proof(message)?;
     let finalized = wallet.sign(&mut psbt, signopts)?;
     assert!(finalized);
 
-    let spendable = wallet.verify_proof(&psbt, &message, None)?;
+    let spendable = wallet.verify_proof(&psbt, message, None)?;
     assert_eq!(spendable, new_balance);
 
     Ok(())
@@ -103,7 +103,7 @@ fn confirmed() {
     assert_ne!(balance, new_balance);
 
     let message = "This belongs to me.";
-    let mut psbt = wallet.create_proof(&message).unwrap();
+    let mut psbt = wallet.create_proof(message).unwrap();
     let finalized = wallet.sign(&mut psbt, signopts).unwrap();
     assert!(finalized);
 
@@ -112,7 +112,7 @@ fn confirmed() {
     let max_confirmation_height = current_height - CONFIRMATIONS;
 
     let spendable = wallet
-        .verify_proof(&psbt, &message, Some(max_confirmation_height))
+        .verify_proof(&psbt, message, Some(max_confirmation_height))
         .unwrap();
     assert_eq!(spendable, new_balance);
 }

@@ -343,7 +343,7 @@ mod test {
         let (wallet, _, _) = get_funded_wallet(descriptor);
 
         let message = "This belongs to me.";
-        let psbt = wallet.create_proof(&message).unwrap();
+        let psbt = wallet.create_proof(message).unwrap();
         let psbt_ser = serialize(&psbt);
         let psbt_b64 = base64::encode(&psbt_ser);
         let expected = r#"cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////FcB9C8LQwqAoYxGcM/YLhUt3XZIQUmFAlaJlBjVmFO8AAAAAAP////8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qAAA="#;
@@ -357,7 +357,7 @@ mod test {
         let (wallet, _, _) = get_funded_wallet(descriptor);
 
         let message = "This belongs to me.";
-        let _psbt = wallet.create_proof(&message).unwrap();
+        let _psbt = wallet.create_proof(message).unwrap();
     }
 
     #[test]
@@ -367,7 +367,7 @@ mod test {
         let (wallet, _, _) = get_funded_wallet(descriptor);
 
         let message = "";
-        let _psbt = wallet.create_proof(&message).unwrap();
+        let _psbt = wallet.create_proof(message).unwrap();
     }
 
     fn get_signed_proof() -> PSBT {

@@ -2,7 +2,8 @@
   <h1>BDK-RESERVES</h1>
 
   <img src="./static/bdk.svg" width="220" />
-  <a href="https://seba.swiss"><img src="./static/seba-bank-logo-bank-lange-green-ohne-tagline.png" width="220" /></a>
+  <br>
+  <a href="https://seba.swiss"><img src="./static/seba-bank-logo-bank-lange-green-ohne-tagline.png" width="250" /></a>
 
   <p>
     <strong>Proof of reserves for Bitcoin dev kit</strong>
