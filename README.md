@@ -2,6 +2,7 @@
   <h1>BDK-RESERVES</h1>
 
   <img src="./static/bdk.svg" width="220" />
+  <a href="https://seba.swiss"><img src="./static/seba-bank-logo-bank-lange-green-ohne-tagline.png" width="220" /></a>
 
   <p>
     <strong>Proof of reserves for Bitcoin dev kit</strong>
@@ -31,7 +32,8 @@ The `bdk-reserves` library provides an implementation of `proof-of-reserves` for
 * It produces and validates proofs in the form of PSBT's.
 * The implementation was inspired by <a href="https://github.com/bitcoin/bips/blob/master/bip-0127.mediawiki">BIP-0127</a> and <a href="https://github.com/bitcoin/bips/blob/master/bip-0322.mediawiki">BIP-0322</a>.
 
-## Examples
+## Sponsorship
+The implementation of <b>bdk-reserves</b> was sponsored by <a href="https://seba.swiss">SEBA Bank</a>.
 
 
 ## License
