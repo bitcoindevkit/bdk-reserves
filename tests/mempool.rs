@@ -1,8 +1,8 @@
 use bdk::bitcoin::Network;
-use bdk::blockchain::{noop_progress, Blockchain, ElectrumBlockchain};
+use bdk::blockchain::{electrum::ElectrumBlockchain, Blockchain, GetHeight};
 use bdk::database::memory::MemoryDatabase;
 use bdk::electrum_client::Client;
-use bdk::wallet::{AddressIndex, Wallet};
+use bdk::wallet::{AddressIndex, SyncOptions, Wallet};
 use bdk::Error;
 use bdk::SignOptions;
 use bdk_reserves::reserves::*;
@@ -10,24 +10,19 @@ use bdk_reserves::reserves::*;
 fn construct_wallet(
     desc: &str,
     network: Network,
-) -> Result<Wallet<ElectrumBlockchain, MemoryDatabase>, Error> {
+) -> Result<(Wallet<MemoryDatabase>, ElectrumBlockchain), Error> {
     let client = Client::new("ssl://electrum.blockstream.info:60002")?;
-    let wallet = Wallet::new(
-        desc,
-        None,
-        network,
-        MemoryDatabase::default(),
-        ElectrumBlockchain::from(client),
-    )?;
+    let wallet = Wallet::new(desc, None, network, MemoryDatabase::default())?;
 
-    wallet.sync(noop_progress(), None)?;
+    let blockchain = ElectrumBlockchain::from(client);
+    wallet.sync(&blockchain, SyncOptions::default())?;
 
-    Ok(wallet)
+    Ok((wallet, blockchain))
 }
 
 #[test]
 fn unconfirmed() -> Result<(), ProofError> {
-    let wallet = construct_wallet(
+    let (wallet, blockchain) = construct_wallet(
         "wpkh(cTTgG6x13nQjAeECaCaDrjrUdcjReZBGspcmNavsnSRyXq7zXT7r)",
         Network::Testnet,
     )?;
@@ -51,8 +46,8 @@ fn unconfirmed() -> Result<(), ProofError> {
     };
     let finalized = wallet.sign(&mut psbt, signopts.clone())?;
     assert!(finalized);
-    wallet.broadcast(&psbt.extract_tx())?;
-    wallet.sync(noop_progress(), None)?;
+    blockchain.broadcast(&psbt.extract_tx())?;
+    wallet.sync(&blockchain, SyncOptions::default())?;
 
     let new_balance = wallet.get_balance()?;
     assert_ne!(balance, new_balance);
@@ -71,7 +66,7 @@ fn unconfirmed() -> Result<(), ProofError> {
 #[test]
 #[should_panic(expected = "NonSpendableInput")]
 fn confirmed() {
-    let wallet = construct_wallet(
+    let (wallet, blockchain) = construct_wallet(
         "wpkh(cTTgG6x13nQjAeECaCaDrjrUdcjReZBGspcmNavsnSRyXq7zXT7r)",
         Network::Testnet,
     )
@@ -96,8 +91,8 @@ fn confirmed() {
     };
     let finalized = wallet.sign(&mut psbt, signopts.clone()).unwrap();
     assert!(finalized);
-    wallet.broadcast(&psbt.extract_tx()).unwrap();
-    wallet.sync(noop_progress(), None).unwrap();
+    blockchain.broadcast(&psbt.extract_tx()).unwrap();
+    wallet.sync(&blockchain, SyncOptions::default()).unwrap();
 
     let new_balance = wallet.get_balance().unwrap();
     assert_ne!(balance, new_balance);
@@ -108,7 +103,7 @@ fn confirmed() {
     assert!(finalized);
 
     const CONFIRMATIONS: u32 = 2;
-    let current_height = wallet.client().get_height().unwrap();
+    let current_height = blockchain.get_height().unwrap();
     let max_confirmation_height = current_height - CONFIRMATIONS;
 
     let spendable = wallet

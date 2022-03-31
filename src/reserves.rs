@@ -100,7 +100,7 @@ impl From<ProofError> for bdk::Error {
     }
 }
 
-impl<B, D> ProofOfReserves for Wallet<B, D>
+impl<D> ProofOfReserves for Wallet<D>
 where
     D: BatchDatabase,
 {

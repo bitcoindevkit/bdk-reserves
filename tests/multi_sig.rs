@@ -2,10 +2,10 @@ use bdk::bitcoin::secp256k1::Secp256k1;
 use bdk::bitcoin::util::key::{PrivateKey, PublicKey};
 use bdk::bitcoin::util::psbt::PartiallySignedTransaction as PSBT;
 use bdk::bitcoin::Network;
-use bdk::blockchain::{noop_progress, ElectrumBlockchain};
+use bdk::blockchain::electrum::ElectrumBlockchain;
 use bdk::database::memory::MemoryDatabase;
 use bdk::electrum_client::Client;
-use bdk::wallet::{AddressIndex, Wallet};
+use bdk::wallet::{AddressIndex, SyncOptions, Wallet};
 use bdk::Error;
 use bdk::SignOptions;
 use bdk_reserves::reserves::*;
@@ -21,7 +21,7 @@ fn construct_multisig_wallet(
     signer: &PrivateKey,
     pubkeys: &[PublicKey],
     script_type: &MultisigType,
-) -> Result<Wallet<ElectrumBlockchain, MemoryDatabase>, Error> {
+) -> Result<Wallet<MemoryDatabase>, Error> {
     let secp = Secp256k1::new();
     let pub_derived = signer.public_key(&secp);
 
@@ -46,15 +46,10 @@ fn construct_multisig_wallet(
     }) + &postfix;
 
     let client = Client::new("ssl://electrum.blockstream.info:60002")?;
-    let wallet = Wallet::new(
-        &desc,
-        None,
-        Network::Testnet,
-        MemoryDatabase::default(),
-        ElectrumBlockchain::from(client),
-    )?;
+    let wallet = Wallet::new(&desc, None, Network::Testnet, MemoryDatabase::default())?;
 
-    wallet.sync(noop_progress(), None)?;
+    let blockchain = ElectrumBlockchain::from(client);
+    wallet.sync(&blockchain, SyncOptions::default())?;
 
     Ok(wallet)
 }
