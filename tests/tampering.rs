@@ -1,4 +1,4 @@
-use bdk::bitcoin::blockdata::transaction::SigHashType;
+use bdk::bitcoin::blockdata::transaction::EcdsaSighashType;
 use bdk::wallet::get_funded_wallet;
 use bdk::SignOptions;
 use bdk_reserves::reserves::*;
@@ -27,8 +27,7 @@ fn tampered_proof_message() {
     // change the message
     let message_bob = "This belongs to Bob.";
     let psbt_bob = wallet.create_proof(message_bob).unwrap();
-    psbt_alice.global.unsigned_tx.input[0].previous_output =
-        psbt_bob.global.unsigned_tx.input[0].previous_output;
+    psbt_alice.unsigned_tx.input[0].previous_output = psbt_bob.unsigned_tx.input[0].previous_output;
     psbt_alice.inputs[0].witness_utxo = psbt_bob.inputs[0].witness_utxo.clone();
 
     let res_alice = wallet.verify_proof(&psbt_alice, message_alice, None);
@@ -55,7 +54,7 @@ fn tampered_proof_sighash_tx() {
     };
 
     // set an unsupported sighash
-    psbt.inputs[1].sighash_type = Some(SigHashType::Single);
+    psbt.inputs[1].sighash_type = Some(EcdsaSighashType::Single.into());
 
     let _finalized = wallet.sign(&mut psbt, signopt).unwrap();
 
@@ -78,7 +77,7 @@ fn tampered_proof_miner_fee() {
     };
 
     // reduce the output value to grant a miner fee
-    psbt.global.unsigned_tx.output[0].value -= 100;
+    psbt.unsigned_tx.output[0].value -= 100;
 
     let _finalized = wallet.sign(&mut psbt, signopt).unwrap();
 
