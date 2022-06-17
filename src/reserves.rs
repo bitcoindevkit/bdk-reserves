@@ -20,7 +20,7 @@
 
 use bdk::bitcoin::blockdata::opcodes;
 use bdk::bitcoin::blockdata::script::{Builder, Script};
-use bdk::bitcoin::blockdata::transaction::{OutPoint, SigHashType, TxIn, TxOut};
+use bdk::bitcoin::blockdata::transaction::{EcdsaSighashType, OutPoint, TxIn, TxOut};
 use bdk::bitcoin::consensus::encode::serialize;
 use bdk::bitcoin::hash_types::{PubkeyHash, Txid};
 use bdk::bitcoin::hashes::{hash160, sha256d, Hash};
@@ -232,7 +232,7 @@ pub fn verify_proof(
 
     // Verify the SIGHASH
     if let Some((i, _psbt_in)) = psbt.inputs.iter().enumerate().find(|(_i, psbt_in)| {
-        psbt_in.sighash_type.is_some() && psbt_in.sighash_type != Some(SigHashType::All)
+        psbt_in.sighash_type.is_some() && psbt_in.sighash_type != Some(EcdsaSighashType::All.into())
     }) {
         return Err(ProofError::UnsupportedSighashType(i));
     }
@@ -446,7 +446,7 @@ mod test {
 
         let message = "This belongs to me.";
         let mut psbt = get_signed_proof();
-        psbt.global.unsigned_tx.input.truncate(1);
+        psbt.unsigned_tx.input.truncate(1);
         psbt.inputs.truncate(1);
 
         wallet.verify_proof(&psbt, message, None).unwrap();
@@ -460,7 +460,7 @@ mod test {
 
         let message = "This belongs to me.";
         let mut psbt = get_signed_proof();
-        psbt.global.unsigned_tx.output.clear();
+        psbt.unsigned_tx.output.clear();
         psbt.inputs.clear();
 
         wallet.verify_proof(&psbt, message, None).unwrap();
@@ -488,7 +488,7 @@ mod test {
 
         let message = "This belongs to me.";
         let mut psbt = get_signed_proof();
-        psbt.inputs[1].sighash_type = Some(SigHashType::SinglePlusAnyoneCanPay);
+        psbt.inputs[1].sighash_type = Some(EcdsaSighashType::SinglePlusAnyoneCanPay.into());
 
         wallet.verify_proof(&psbt, message, None).unwrap();
     }
@@ -508,7 +508,7 @@ mod test {
             network: Network::Testnet,
         }
         .script_pubkey();
-        psbt.global.unsigned_tx.output[0].script_pubkey = out_script_unspendable;
+        psbt.unsigned_tx.output[0].script_pubkey = out_script_unspendable;
 
         wallet.verify_proof(&psbt, message, None).unwrap();
     }
@@ -521,7 +521,7 @@ mod test {
 
         let message = "This belongs to me.";
         let mut psbt = get_signed_proof();
-        psbt.global.unsigned_tx.output[0].value = 123;
+        psbt.unsigned_tx.output[0].value = 123;
 
         wallet.verify_proof(&psbt, message, None).unwrap();
     }
