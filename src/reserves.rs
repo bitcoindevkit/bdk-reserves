@@ -333,6 +333,7 @@ fn challenge_txin(message: &str) -> TxIn {
 #[cfg(test)]
 mod test {
     use super::*;
+    use bdk::bitcoin::base64;
     use bdk::bitcoin::consensus::encode::deserialize;
     use bdk::bitcoin::{Address, Network};
     use bdk::wallet::get_funded_wallet;
