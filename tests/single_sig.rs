@@ -24,6 +24,7 @@ fn test_proof(#[case] descriptor: &'static str) -> Result<(), ProofError> {
         &mut psbt,
         SignOptions {
             trust_witness_utxo: true,
+            remove_partial_sigs: false,
             ..Default::default()
         },
     )?;

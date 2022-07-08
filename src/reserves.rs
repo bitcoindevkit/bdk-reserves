@@ -131,6 +131,7 @@ where
             .add_foreign_utxo(challenge_txin.previous_output, challenge_psbt_inp, 42)?
             .fee_absolute(0)
             .only_witness_utxo()
+            .current_height(0)
             .drain_to(out_script_unspendable)
             .ordering(TxOrdering::Untouched);
         let (psbt, _details) = builder.finish().unwrap();

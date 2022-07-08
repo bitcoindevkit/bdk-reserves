@@ -128,6 +128,7 @@ fn test_proof_multisig(
 
     let signopts = SignOptions {
         trust_witness_utxo: true,
+        remove_partial_sigs: false,
         ..Default::default()
     };
     let finalized = wallet1.sign(&mut psbt, signopts.clone())?;
