@@ -96,7 +96,7 @@ fn test_proof_multisig(
     );
     let balance = wallet1.get_balance()?;
     assert!(
-        (410000..=420000).contains(&balance),
+        (410000..=420000).contains(&balance.confirmed),
         "balance is {} but should be between 410000 and 420000",
         balance
     );
@@ -158,7 +158,7 @@ fn test_proof_multisig(
     assert!(finalized);
 
     let spendable = wallet1.verify_proof(&psbt, message, None)?;
-    assert_eq!(spendable, balance);
+    assert_eq!(spendable, balance.confirmed);
 
     Ok(())
 }
