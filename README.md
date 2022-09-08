@@ -11,8 +11,8 @@
 
   <p>
     <a href="https://crates.io/crates/bdk-reserves"><img alt="Crate Info" src="https://img.shields.io/crates/v/bdk-reserves.svg"/></a>
-    <a href="https://github.com/weareseba/bdk-reserves/blob/master/LICENSE"><img alt="MIT or Apache-2.0 Licensed" src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg"/></a>
-    <a href="https://github.com/weareseba/bdk-reserves/actions?query=workflow%3ACI"><img alt="CI Status" src="https://github.com/ulrichard/bdk-reserves/workflows/CI/badge.svg"></a>
+    <a href="https://github.com/bitcoindevkit/bdk-reserves/blob/master/LICENSE"><img alt="MIT or Apache-2.0 Licensed" src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg"/></a>
+    <a href="https://github.com/bitcoindevkit/bdk-reserves/actions?query=workflow%3ACI"><img alt="CI Status" src="https://github.com/ulrichard/bdk-reserves/workflows/CI/badge.svg"></a>
     <a href="https://docs.rs/bdk-reserves"><img alt="API Docs" src="https://img.shields.io/badge/docs.rs-bdk_reserves-green"/></a>
     <a href="https://blog.rust-lang.org/2021/10/21/Rust-1.56.0.html"><img alt="Rustc Version 1.56+" src="https://img.shields.io/badge/rustc-1.56%2B-lightgrey.svg"/></a>
     <a href="https://discord.gg/d7NkDKm"><img alt="Chat on Discord" src="https://img.shields.io/discord/753336465005608961?logo=discord"></a>
