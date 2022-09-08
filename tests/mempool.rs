@@ -28,7 +28,11 @@ fn unconfirmed() -> Result<(), ProofError> {
     )?;
 
     let balance = wallet.get_balance()?;
-    assert!(balance > 10_000, "insufficient balance: {}", balance);
+    assert!(
+        balance.confirmed > 10_000,
+        "insufficient balance: {}",
+        balance.confirmed
+    );
     let addr = wallet.get_address(AddressIndex::New).unwrap();
     assert_eq!(
         addr.to_string(),
@@ -58,7 +62,11 @@ fn unconfirmed() -> Result<(), ProofError> {
     assert!(finalized);
 
     let spendable = wallet.verify_proof(&psbt, message, None)?;
-    assert_eq!(spendable, new_balance);
+    dbg!(&new_balance);
+    assert_eq!(
+        spendable,
+        new_balance.untrusted_pending + new_balance.confirmed
+    );
 
     Ok(())
 }
@@ -73,7 +81,11 @@ fn confirmed() {
     .unwrap();
 
     let balance = wallet.get_balance().unwrap();
-    assert!(balance > 10_000, "insufficient balance: {}", balance);
+    assert!(
+        balance.confirmed > 10_000,
+        "insufficient balance: {}",
+        balance
+    );
     let addr = wallet.get_address(AddressIndex::New).unwrap();
     assert_eq!(
         addr.to_string(),
@@ -109,5 +121,5 @@ fn confirmed() {
     let spendable = wallet
         .verify_proof(&psbt, message, Some(max_confirmation_height))
         .unwrap();
-    assert_eq!(spendable, new_balance);
+    assert_eq!(spendable, new_balance.confirmed);
 }

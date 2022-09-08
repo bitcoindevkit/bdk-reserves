@@ -33,6 +33,8 @@ jobs:
         run: rustup component add clippy
       - name: Update toolchain
         run: rustup update
+      - name: Update Cargo.lock
+        run: cargo update
       - name: Build
         run: cargo build
       - name: Clippy

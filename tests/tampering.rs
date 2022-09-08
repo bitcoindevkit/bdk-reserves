@@ -22,7 +22,7 @@ fn tampered_proof_message() {
     let spendable = wallet
         .verify_proof(&psbt_alice, message_alice, None)
         .unwrap();
-    assert_eq!(spendable, balance);
+    assert_eq!(spendable, balance.confirmed);
 
     // change the message
     let message_bob = "This belongs to Bob.";
