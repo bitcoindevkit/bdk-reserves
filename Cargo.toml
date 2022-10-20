@@ -7,7 +7,7 @@ description = "Proof of reserves for bitcoin dev kit"
 keywords = ["proof", "reserves", "bitcoin", "psbt"]
 readme = "README.md"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/weareseba/bdk-reserves"
+repository = "https://github.com/bitcoindevkit/bdk-reserves"
 
 [dependencies]
 bdk = { version = "0.23", default-features = false }
