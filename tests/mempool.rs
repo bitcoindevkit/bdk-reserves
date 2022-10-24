@@ -1,3 +1,4 @@
+mod regtestenv;
 use bdk::bitcoin::Network;
 use bdk::blockchain::{electrum::ElectrumBlockchain, Blockchain, GetHeight};
 use bdk::database::memory::MemoryDatabase;
@@ -6,26 +7,26 @@ use bdk::wallet::{AddressIndex, SyncOptions, Wallet};
 use bdk::Error;
 use bdk::SignOptions;
 use bdk_reserves::reserves::*;
+use regtestenv::RegTestEnv;
 
-fn construct_wallet(
-    desc: &str,
-    network: Network,
-) -> Result<(Wallet<MemoryDatabase>, ElectrumBlockchain), Error> {
-    let client = Client::new("ssl://electrum.blockstream.info:60002")?;
+fn construct_wallet(desc: &str, network: Network) -> Result<Wallet<MemoryDatabase>, Error> {
     let wallet = Wallet::new(desc, None, network, MemoryDatabase::default())?;
 
-    let blockchain = ElectrumBlockchain::from(client);
-    wallet.sync(&blockchain, SyncOptions::default())?;
-
-    Ok((wallet, blockchain))
+    Ok(wallet)
 }
 
 #[test]
 fn unconfirmed() -> Result<(), ProofError> {
-    let (wallet, blockchain) = construct_wallet(
+    let wallet = construct_wallet(
         "wpkh(cTTgG6x13nQjAeECaCaDrjrUdcjReZBGspcmNavsnSRyXq7zXT7r)",
-        Network::Testnet,
+        Network::Regtest,
     )?;
+
+    let regtestenv = RegTestEnv::new();
+    regtestenv.generate(&[&wallet]);
+    let client = Client::new(regtestenv.electrum_url()).unwrap();
+    let blockchain = ElectrumBlockchain::from(client);
+    wallet.sync(&blockchain, SyncOptions::default())?;
 
     let balance = wallet.get_balance()?;
     assert!(
@@ -36,7 +37,7 @@ fn unconfirmed() -> Result<(), ProofError> {
     let addr = wallet.get_address(AddressIndex::New).unwrap();
     assert_eq!(
         addr.to_string(),
-        "tb1qexxes4qzr3m6a6mcqrp0d4xexagw08fgxv898e"
+        "bcrt1qexxes4qzr3m6a6mcqrp0d4xexagw08fgy97gss"
     );
 
     let mut builder = wallet.build_tx();
@@ -74,11 +75,17 @@ fn unconfirmed() -> Result<(), ProofError> {
 #[test]
 #[should_panic(expected = "NonSpendableInput")]
 fn confirmed() {
-    let (wallet, blockchain) = construct_wallet(
+    let wallet = construct_wallet(
         "wpkh(cTTgG6x13nQjAeECaCaDrjrUdcjReZBGspcmNavsnSRyXq7zXT7r)",
-        Network::Testnet,
+        Network::Regtest,
     )
     .unwrap();
+
+    let regtestenv = RegTestEnv::new();
+    regtestenv.generate(&[&wallet]);
+    let client = Client::new(regtestenv.electrum_url()).unwrap();
+    let blockchain = ElectrumBlockchain::from(client);
+    wallet.sync(&blockchain, SyncOptions::default()).unwrap();
 
     let balance = wallet.get_balance().unwrap();
     assert!(
@@ -89,7 +96,7 @@ fn confirmed() {
     let addr = wallet.get_address(AddressIndex::New).unwrap();
     assert_eq!(
         addr.to_string(),
-        "tb1qexxes4qzr3m6a6mcqrp0d4xexagw08fgxv898e"
+        "bcrt1qexxes4qzr3m6a6mcqrp0d4xexagw08fgy97gss"
     );
 
     let mut builder = wallet.build_tx();
