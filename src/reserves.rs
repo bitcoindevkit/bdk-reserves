@@ -26,7 +26,7 @@ use bdk::bitcoin::hash_types::{PubkeyHash, Txid};
 use bdk::bitcoin::hashes::{hash160, sha256d, Hash};
 use bdk::bitcoin::util::address::Payload;
 use bdk::bitcoin::util::psbt::{Input, PartiallySignedTransaction as PSBT};
-use bdk::bitcoin::{Address, Network};
+use bdk::bitcoin::{Address, Network, Sequence};
 use bdk::database::BatchDatabase;
 use bdk::wallet::tx_builder::TxOrdering;
 use bdk::wallet::Wallet;
@@ -326,7 +326,7 @@ fn challenge_txin(message: &str) -> TxIn {
     let message = sha256d::Hash::hash(message.as_bytes());
     TxIn {
         previous_output: OutPoint::new(Txid::from_hash(message), 0),
-        sequence: 0xFFFFFFFF,
+        sequence: Sequence(0xFFFFFFFF),
         ..Default::default()
     }
 }
@@ -334,7 +334,7 @@ fn challenge_txin(message: &str) -> TxIn {
 #[cfg(test)]
 mod test {
     use super::*;
-    use bdk::bitcoin::base64;
+    use base64;
     use bdk::bitcoin::consensus::encode::deserialize;
     use bdk::bitcoin::{Address, Network};
     use bdk::wallet::get_funded_wallet;
