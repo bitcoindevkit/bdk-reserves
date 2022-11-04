@@ -353,7 +353,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "Descriptor(Miniscript(Unexpected(\"Key too short")]
+    #[should_panic(expected = "Descriptor(Miniscript(Unexpected(\"unexpected «Key too short (<66 char), doesn't match any format»\")))")]
     fn invalid_descriptor() {
         let descriptor = "wpkh(cVpPVqXRyPcFW)";
         let (wallet, _, _) = get_funded_wallet(descriptor);
