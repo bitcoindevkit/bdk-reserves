@@ -26,7 +26,7 @@ use bdk::bitcoin::hash_types::{PubkeyHash, Txid};
 use bdk::bitcoin::hashes::{hash160, sha256d, Hash};
 use bdk::bitcoin::util::address::Payload;
 use bdk::bitcoin::util::psbt::{Input, PartiallySignedTransaction as PSBT};
-use bdk::bitcoin::{Address, Network};
+use bdk::bitcoin::{Address, Network, Sequence};
 use bdk::database::BatchDatabase;
 use bdk::wallet::tx_builder::TxOrdering;
 use bdk::wallet::Wallet;
@@ -326,7 +326,7 @@ fn challenge_txin(message: &str) -> TxIn {
     let message = sha256d::Hash::hash(message.as_bytes());
     TxIn {
         previous_output: OutPoint::new(Txid::from_hash(message), 0),
-        sequence: 0xFFFFFFFF,
+        sequence: Sequence(0xFFFFFFFF),
         ..Default::default()
     }
 }
@@ -334,7 +334,7 @@ fn challenge_txin(message: &str) -> TxIn {
 #[cfg(test)]
 mod test {
     use super::*;
-    use bdk::bitcoin::base64;
+    use base64;
     use bdk::bitcoin::consensus::encode::deserialize;
     use bdk::bitcoin::{Address, Network};
     use bdk::wallet::get_funded_wallet;
@@ -348,12 +348,14 @@ mod test {
         let psbt = wallet.create_proof(message).unwrap();
         let psbt_ser = serialize(&psbt);
         let psbt_b64 = base64::encode(&psbt_ser);
-        let expected = r#"cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////2johM0znoXIXT1lg+ySrvGrtq1IGXPJzpfi/emkV9iIAAAAAAP////8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qAAA="#;
+        let expected = r#"cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////2johM0znoXIXT1lg+ySrvGrtq1IGXPJzpfi/emkV9iIAAAAAAP////8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qIgYDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+ME7OUmVwAA"#;
         assert_eq!(psbt_b64, expected);
     }
 
     #[test]
-    #[should_panic(expected = "Descriptor(Miniscript(Unexpected(\"Key too short")]
+    #[should_panic(
+        expected = "Descriptor(Miniscript(Unexpected(\"unexpected «Key too short (<66 char), doesn't match any format»\")))"
+    )]
     fn invalid_descriptor() {
         let descriptor = "wpkh(cVpPVqXRyPcFW)";
         let (wallet, _, _) = get_funded_wallet(descriptor);
