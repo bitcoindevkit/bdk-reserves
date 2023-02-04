@@ -215,7 +215,7 @@ pub fn verify_proof(
         .iter()
         .enumerate()
         .skip(1)
-        .find(|(_i, inp)| outpoints.iter().find(|op| op.0 == inp.previous_output) == None)
+        .find(|(_i, inp)| !outpoints.iter().any(|op| op.0 == inp.previous_output))
     {
         return Err(ProofError::NonSpendableInput(i));
     }
