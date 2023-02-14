@@ -215,7 +215,7 @@ pub fn verify_proof(
         .iter()
         .enumerate()
         .skip(1)
-        .find(|(_i, inp)| outpoints.iter().find(|op| op.0 == inp.previous_output) == None)
+        .find(|(_i, inp)| !outpoints.iter().any(|op| op.0 == inp.previous_output))
     {
         return Err(ProofError::NonSpendableInput(i));
     }
@@ -376,7 +376,7 @@ mod test {
 
     fn get_signed_proof() -> PSBT {
         let psbt = "cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////2johM0znoXIXT1lg+ySrvGrtq1IGXPJzpfi/emkV9iIAAAAAAP////8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qAQcAAQhrAkcwRAIgDSE4PQ57JDiZ7otGkTqz35bi/e1pexYaYKWaveuvRd4CIFzVB4sAmgtdEVz2vHzs1iXc9iRKJ+KQOQb+C2DtPyvzASEDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+MAAA==";
-        let psbt = base64::decode(&psbt).unwrap();
+        let psbt = base64::decode(psbt).unwrap();
         deserialize(&psbt).unwrap()
     }
 

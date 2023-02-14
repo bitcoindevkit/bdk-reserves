@@ -119,13 +119,8 @@ fn test_proof_multisig(
         psbt.inputs.iter().fold((0usize, 0, 0), |acc, i| {
             (
                 acc.0 + i.partial_sigs.len(),
-                acc.1 + if i.final_script_sig.is_some() { 1 } else { 0 },
-                acc.2
-                    + if i.final_script_witness.is_some() {
-                        1
-                    } else {
-                        0
-                    },
+                acc.1 + usize::from(i.final_script_sig.is_some()),
+                acc.2 + usize::from(i.final_script_witness.is_some()),
             )
         })
     };
