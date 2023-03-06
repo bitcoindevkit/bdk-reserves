@@ -134,7 +134,7 @@ where
             .current_height(0)
             .drain_to(out_script_unspendable)
             .ordering(TxOrdering::Untouched);
-        let (psbt, _details) = builder.finish().unwrap();
+        let (psbt, _details) = builder.finish().map_err(ProofError::BdkError)?;
 
         Ok(psbt)
     }
