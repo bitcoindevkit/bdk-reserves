@@ -35,6 +35,11 @@ jobs:
         run: rustup update
       - name: Update Cargo.lock
         run: cargo update
+      - name: Pin dependencies for MSRV
+        if: matrix.rust == '1.57.0'
+        run: |
+          cargo update -p log:0.4.19 --precise 0.4.18
+          cargo update -p tempfile --precise 3.6.0
       - name: Build
         run: cargo build
       - name: Clippy
