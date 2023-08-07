@@ -48,6 +48,19 @@ Licensed under either of
 
 at your option.
 
+## Minimum Supported Rust Version (MSRV)
+
+This library should always compile with Rust **1.57.0**.
+
+To build with the MSRV you will need to pin the below dependencies:
+
+```shell
+# log versions at 0.4.19+ have MSRV 1.60.0
+cargo update -p log:0.4.19 --precise 0.4.18
+# tempfile versions at 3.7.0+ have MSRV 1.63.0
+cargo update -p tempfile --precise 3.6.0
+```
+
 ## Contribution
 
 Unless you explicitly state otherwise, any contribution intentionally submitted
