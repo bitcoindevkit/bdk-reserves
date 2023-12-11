@@ -25,7 +25,7 @@ use bdk::bitcoin::consensus::encode::serialize;
 use bdk::bitcoin::hash_types::{PubkeyHash, Txid};
 use bdk::bitcoin::hashes::{hash160, sha256d, Hash};
 use bdk::bitcoin::util::psbt::{raw::Key, Input, PartiallySignedTransaction as PSBT};
-use bdk::bitcoin::{Network, Sequence};
+use bdk::bitcoin::{Network, Sequence, Transaction};
 use bdk::database::BatchDatabase;
 use bdk::wallet::tx_builder::TxOrdering;
 use bdk::wallet::Wallet;
@@ -190,6 +190,130 @@ where
     }
 }
 
+/// Trait for Transaction-centric proofs
+pub trait ReserveProof {
+    /// Verify a proof transaction.
+    /// Look up utxos with get_prevout()
+    fn verify_reserve_proof<F>(&self, message: &str, get_prevout: F) -> Result<u64, ProofError>
+    where
+        F: FnMut(&OutPoint) -> Option<TxOut>;
+
+    /// Verify that this transaction correctly includes the challenge
+    fn verify_challenge(&self, message: &str) -> Result<(), ProofError>;
+}
+
+impl ReserveProof for Transaction {
+    fn verify_reserve_proof<F>(&self, message: &str, mut get_prevout: F) -> Result<u64, ProofError>
+    where
+        F: FnMut(&OutPoint) -> Option<TxOut>
+    {
+        if self.output.len() != 1 {
+            return Err(ProofError::WrongNumberOfOutputs);
+        }
+        if self.input.len() <= 1 {
+            return Err(ProofError::WrongNumberOfInputs);
+        }
+
+        // verify the unspendable output
+        let pkh = PubkeyHash::from_hash(hash160::Hash::hash(&[0]));
+        let out_script_unspendable = Script::new_p2pkh(&pkh);
+
+        if self.output[0].script_pubkey != out_script_unspendable {
+            return Err(ProofError::InvalidOutput);
+        }
+
+        self.verify_challenge(message)?;
+
+        // gather the proof UTXOs
+        let prevouts: Vec<(usize, TxOut)> = self
+            .input
+            .iter()
+            .enumerate()
+            .skip(1)
+            .map(|(i, input)|
+                get_prevout(&input.previous_output)
+                    .map(|txout| (i, txout))
+                    .ok_or(ProofError::NonSpendableInput(i))
+            )
+            .collect::<Result<_, ProofError>>()?;
+
+        let sum: u64 = prevouts.iter()
+            .map(|(_i, prevout)| prevout.value)
+            .sum();
+
+        // inflow and outflow being equal means no miner fee
+        if self.output[0].value != sum {
+            return Err(ProofError::InAndOutValueNotEqual);
+        }
+
+        let serialized_tx = serialize(&self);
+
+        // Check that all inputs besides the challenge input are valid
+        prevouts
+            .iter()
+            .map(|(i, prevout)|
+                bitcoinconsensus::verify(
+                    prevout.script_pubkey.to_bytes().as_slice(),
+                    prevout.value,
+                    &serialized_tx,
+                    *i,
+                )
+                .map_err(|e|
+                    ProofError::SignatureValidation(*i, format!("{:?}", e))
+                ),
+            )
+            .collect::<Result<(), _>>()?;
+
+        // Check that all inputs besides the challenge input actually
+        // commit to the challenge input by modifying the challenge
+        // input and verifying that validation *fails*.
+        //
+        // If validation succeeds here, that input did not correctly
+        // commit to the challenge input.
+        let serialized_malleated_tx = {
+            let mut malleated_tx = self.clone();
+
+            let mut malleated_message = "MALLEATED: ".to_string();
+            malleated_message.push_str(message);
+
+            malleated_tx.input[0] = challenge_txin(&malleated_message);
+
+            serialize(&malleated_tx)
+        };
+
+        prevouts
+            .iter()
+            .map(|(i, prevout)|
+                match bitcoinconsensus::verify(
+                    prevout.script_pubkey.to_bytes().as_slice(),
+                    prevout.value,
+                    &serialized_malleated_tx,
+                    *i,
+                ) {
+                    Ok(_) => {
+                        Err(ProofError::SignatureValidation(*i, "Does not commit to challenge input".to_string()))
+                    },
+                    Err(_) => {
+                        Ok(())
+                    }
+                }
+            )
+            .collect::<Result<(), _>>()?;
+
+        Ok(sum)
+    }
+
+    fn verify_challenge(&self, message: &str) -> Result<(), ProofError> {
+        let challenge_txin = challenge_txin(message);
+
+        if self.input[0].previous_output != challenge_txin.previous_output {
+            return Err(ProofError::ChallengeInputMismatch);
+        }
+
+        Ok(())
+    }
+}
+
 /// Make sure this is a proof, and not a spendable transaction.
 /// Make sure the proof is valid.
 /// Currently proofs can only be validated against the tip of the chain.
@@ -205,28 +329,9 @@ pub fn verify_proof(
 ) -> Result<u64, ProofError> {
     let tx = psbt.clone().extract_tx();
 
+    // Redundant check to tx.verify_reserve_proof() to ensure error priority is not changed
     if tx.output.len() != 1 {
         return Err(ProofError::WrongNumberOfOutputs);
-    }
-    if tx.input.len() <= 1 {
-        return Err(ProofError::WrongNumberOfInputs);
-    }
-
-    // verify the challenge txin
-    let challenge_txin = challenge_txin(message);
-    if tx.input[0].previous_output != challenge_txin.previous_output {
-        return Err(ProofError::ChallengeInputMismatch);
-    }
-
-    // verify the proof UTXOs are still spendable
-    if let Some((i, _inp)) = tx
-        .input
-        .iter()
-        .enumerate()
-        .skip(1)
-        .find(|(_i, inp)| !outpoints.iter().any(|op| op.0 == inp.previous_output))
-    {
-        return Err(ProofError::NonSpendableInput(i));
     }
 
     // verify that the inputs are signed, except the challenge
@@ -247,69 +352,17 @@ pub fn verify_proof(
         return Err(ProofError::UnsupportedSighashType(i));
     }
 
-    // calculate the spendable amount of the proof
-    let sum = tx
-        .input
-        .iter()
-        .map(|tx_in| {
-            if let Some(op) = outpoints.iter().find(|op| op.0 == tx_in.previous_output) {
-                op.1.value
-            } else {
-                0
-            }
-        })
-        .sum();
-
-    // inflow and outflow being equal means no miner fee
-    if tx.output[0].value != sum {
-        return Err(ProofError::InAndOutValueNotEqual);
-    }
-
-    // verify the unspendable output
-    let pkh = PubkeyHash::from_hash(hash160::Hash::hash(&[0]));
-    let out_script_unspendable = Script::new_p2pkh(&pkh);
-
-    if tx.output[0].script_pubkey != out_script_unspendable {
-        return Err(ProofError::InvalidOutput);
-    }
-
-    let serialized_tx = serialize(&tx);
-
-    // Verify other inputs against prevouts.
-    if let Some((i, res)) = tx
-        .input
-        .iter()
-        .enumerate()
-        .skip(1)
-        .map(|(i, tx_in)| {
-            if let Some(op) = outpoints.iter().find(|op| op.0 == tx_in.previous_output) {
-                (i, Ok(op.1.clone()))
-            } else {
-                (i, Err(ProofError::OutpointNotFound(i)))
-            }
-        })
-        .map(|(i, res)| match res {
-            Ok(txout) => (
-                i,
-                bitcoinconsensus::verify(
-                    txout.script_pubkey.to_bytes().as_slice(),
-                    txout.value,
-                    &serialized_tx,
-                    i,
-                )
-                .map_err(|e| ProofError::SignatureValidation(i, format!("{:?}", e))),
-            ),
-            Err(err) => (i, Err(err)),
-        })
-        .find(|(_i, res)| res.is_err())
-    {
-        return Err(ProofError::SignatureValidation(
-            i,
-            format!("{:?}", res.err().unwrap()),
-        ));
-    }
-
-    Ok(sum)
+    tx.verify_reserve_proof(message, |search_outpoint|
+        outpoints
+            .iter()
+            .find_map(|(outpoint, txout)|
+                if search_outpoint == outpoint {
+                    Some(txout.clone())
+                } else {
+                    None
+                }
+            )
+    )
 }
 
 /// Construct a challenge input with the message

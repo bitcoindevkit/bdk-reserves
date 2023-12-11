@@ -35,7 +35,6 @@ fn tampered_proof_message() {
     assert!(res_alice.is_err());
     assert!(res_bob.is_err());
     res_alice.unwrap();
-    res_bob.unwrap();
 }
 
 #[test]
