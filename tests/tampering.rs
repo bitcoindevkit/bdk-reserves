@@ -33,7 +33,7 @@ fn tampered_proof_message() {
     let res_alice = wallet.verify_proof(&psbt_alice, message_alice, None);
     let res_bob = wallet.verify_proof(&psbt_alice, message_bob, None);
     assert!(res_alice.is_err());
-    assert!(res_bob.is_ok());
+    assert!(res_bob.is_err());
     res_alice.unwrap();
     res_bob.unwrap();
 }

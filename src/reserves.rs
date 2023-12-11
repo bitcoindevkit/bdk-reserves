@@ -238,6 +238,35 @@ pub fn verify_proof(
         return Err(ProofError::UnsupportedSighashType(i));
     }
 
+    // calculate the spendable amount of the proof
+    let sum = tx
+        .input
+        .iter()
+        .map(|tx_in| {
+            if let Some(op) = outpoints.iter().find(|op| op.0 == tx_in.previous_output) {
+                op.1.value
+            } else {
+                0
+            }
+        })
+        .sum();
+
+    // inflow and outflow being equal means no miner fee
+    if tx.output[0].value != sum {
+        return Err(ProofError::InAndOutValueNotEqual);
+    }
+
+    // verify the unspendable output
+    let pkh = PubkeyHash::from_hash(hash160::Hash::hash(&[0]));
+    let out_script_unspendable = Address {
+        payload: Payload::PubkeyHash(pkh),
+        network,
+    }
+    .script_pubkey();
+    if tx.output[0].script_pubkey != out_script_unspendable {
+        return Err(ProofError::InvalidOutput);
+    }
+
     let serialized_tx = serialize(&tx);
     // Verify the challenge input
     if let Some(utxo) = &psbt.inputs[0].witness_utxo {
@@ -271,12 +300,13 @@ pub fn verify_proof(
         .map(|(i, res)| match res {
             Ok(txout) => (
                 i,
-                Ok(bitcoinconsensus::verify(
+                bitcoinconsensus::verify(
                     txout.script_pubkey.to_bytes().as_slice(),
                     txout.value,
                     &serialized_tx,
                     i,
-                )),
+                )
+                .map_err(|e| ProofError::SignatureValidation(i, format!("{:?}", e)))
             ),
             Err(err) => (i, Err(err)),
         })
@@ -286,35 +316,6 @@ pub fn verify_proof(
             i,
             format!("{:?}", res.err().unwrap()),
         ));
-    }
-
-    // calculate the spendable amount of the proof
-    let sum = tx
-        .input
-        .iter()
-        .map(|tx_in| {
-            if let Some(op) = outpoints.iter().find(|op| op.0 == tx_in.previous_output) {
-                op.1.value
-            } else {
-                0
-            }
-        })
-        .sum();
-
-    // verify the unspendable output
-    let pkh = PubkeyHash::from_hash(hash160::Hash::hash(&[0]));
-    let out_script_unspendable = Address {
-        payload: Payload::PubkeyHash(pkh),
-        network,
-    }
-    .script_pubkey();
-    if tx.output[0].script_pubkey != out_script_unspendable {
-        return Err(ProofError::InvalidOutput);
-    }
-
-    // inflow and outflow being equal means no miner fee
-    if tx.output[0].value != sum {
-        return Err(ProofError::InAndOutValueNotEqual);
     }
 
     Ok(sum)
