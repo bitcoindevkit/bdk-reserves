@@ -24,12 +24,16 @@ use bdk::bitcoin::blockdata::transaction::{EcdsaSighashType, OutPoint, TxIn, TxO
 use bdk::bitcoin::consensus::encode::serialize;
 use bdk::bitcoin::hash_types::{PubkeyHash, Txid};
 use bdk::bitcoin::hashes::{hash160, sha256d, Hash};
-use bdk::bitcoin::util::psbt::{Input, PartiallySignedTransaction as PSBT};
+use bdk::bitcoin::util::psbt::{raw::Key, Input, PartiallySignedTransaction as PSBT};
 use bdk::bitcoin::{Network, Sequence};
 use bdk::database::BatchDatabase;
 use bdk::wallet::tx_builder::TxOrdering;
 use bdk::wallet::Wallet;
 use bdk::Error;
+
+use std::collections::BTreeMap;
+
+pub const PSBT_IN_POR_COMMITMENT: u8 = 0x09;
 
 /// The API for proof of reserves
 pub trait ProofOfReserves {
@@ -108,12 +112,22 @@ where
             return Err(ProofError::ChallengeInputMismatch);
         }
         let challenge_txin = challenge_txin(message);
+
+        let challenge_key = Key {
+            type_value: PSBT_IN_POR_COMMITMENT,
+            key: Vec::new(),
+        };
+
+        let mut unknown_psbt_keys: BTreeMap<Key, Vec<u8>> = BTreeMap::new();
+        unknown_psbt_keys.insert(challenge_key, message.as_bytes().into());
+
         let challenge_psbt_inp = Input {
             witness_utxo: Some(TxOut {
                 value: 0,
                 script_pubkey: Builder::new().push_opcode(opcodes::OP_TRUE).into_script(),
             }),
             final_script_sig: Some(Script::default()), /* "finalize" the input with an empty scriptSig */
+            unknown: unknown_psbt_keys,
             ..Default::default()
         };
 
@@ -327,7 +341,7 @@ mod test {
 
         let psbt_b64 = psbt.to_string();
 
-        let expected = r#"cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////2johM0znoXIXT1lg+ySrvGrtq1IGXPJzpfi/emkV9iIAAAAAAP////8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qIgYDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+ME7OUmVwAA"#;
+        let expected = r#"cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////2johM0znoXIXT1lg+ySrvGrtq1IGXPJzpfi/emkV9iIAAAAAAP////8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAEJE1RoaXMgYmVsb25ncyB0byBtZS4AAQEfUMMAAAAAAAAWABTs5SZXEFPahkVMngZneer50VAuaiIGAysFWAeL7DhpSoSTPWWTA+JXXa5+kWhZEUVBFb/WRIfjBOzlJlcAAA=="#;
 
         assert_eq!(psbt_b64, expected);
     }
