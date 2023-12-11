@@ -336,8 +336,16 @@ mod test {
     use super::*;
     use base64ct::{Base64, Encoding};
     use bdk::bitcoin::consensus::encode::deserialize;
-    use bdk::bitcoin::{Address, Network};
+    use bdk::bitcoin::secp256k1::{
+        Message,
+        Secp256k1,
+        SecretKey,
+        ecdsa::SerializedSignature,
+    };
+    use bdk::bitcoin::{Address, EcdsaSighashType, Network, Witness };
+    use bdk::bitcoin::hashes::sha256;
     use bdk::wallet::get_funded_wallet;
+    use std::str::FromStr;
 
     #[test]
     fn test_proof() {
@@ -481,6 +489,32 @@ mod test {
         let mut psbt = get_signed_proof();
         psbt.inputs[1].final_script_sig = None;
         psbt.inputs[1].final_script_witness = None;
+
+        wallet.verify_proof(&psbt, message, None).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "SignatureValidation")]
+    fn invalid_signature() {
+        let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
+        let (wallet, _, _) = get_funded_wallet(descriptor);
+
+        let message = "This belongs to me.";
+        let mut psbt = get_signed_proof();
+        psbt.inputs[1].final_script_sig = None;
+
+        let secp = Secp256k1::new();
+        // privkey from milk sad ...
+        let privkey = SecretKey::from_str("4dcaff8ed1975fe2cebbd7c03384902c2189a2e6de11f1bb1c9dc784e8e4d11e").expect("valid privkey");
+
+        let invalid_message = Message::from_hashed_data::<sha256::Hash>("Invalid signing data".as_bytes());
+        let signature = secp.sign_ecdsa(&invalid_message, &privkey);
+
+        let mut invalid_witness = Witness::new();
+
+        let signature = SerializedSignature::from_signature(&signature);
+        invalid_witness.push_bitcoin_signature(&signature, EcdsaSighashType::All);
+        psbt.inputs[1].final_script_witness = Some(invalid_witness);
 
         wallet.verify_proof(&psbt, message, None).unwrap();
     }
