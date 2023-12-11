@@ -260,22 +260,7 @@ pub fn verify_proof(
     }
 
     let serialized_tx = serialize(&tx);
-    // Verify the challenge input
-    if let Some(utxo) = &psbt.inputs[0].witness_utxo {
-        if let Err(err) = bitcoinconsensus::verify(
-            utxo.script_pubkey.to_bytes().as_slice(),
-            utxo.value,
-            &serialized_tx,
-            0,
-        ) {
-            return Err(ProofError::SignatureValidation(0, format!("{:?}", err)));
-        }
-    } else {
-        return Err(ProofError::SignatureValidation(
-            0,
-            "witness_utxo not found for challenge input".to_string(),
-        ));
-    }
+
     // Verify other inputs against prevouts.
     if let Some((i, res)) = tx
         .input
