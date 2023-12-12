@@ -238,6 +238,35 @@ pub fn verify_proof(
         return Err(ProofError::UnsupportedSighashType(i));
     }
 
+    // calculate the spendable amount of the proof
+    let sum = tx
+        .input
+        .iter()
+        .map(|tx_in| {
+            if let Some(op) = outpoints.iter().find(|op| op.0 == tx_in.previous_output) {
+                op.1.value
+            } else {
+                0
+            }
+        })
+        .sum();
+
+    // inflow and outflow being equal means no miner fee
+    if tx.output[0].value != sum {
+        return Err(ProofError::InAndOutValueNotEqual);
+    }
+
+    // verify the unspendable output
+    let pkh = PubkeyHash::from_hash(hash160::Hash::hash(&[0]));
+    let out_script_unspendable = Address {
+        payload: Payload::PubkeyHash(pkh),
+        network,
+    }
+    .script_pubkey();
+    if tx.output[0].script_pubkey != out_script_unspendable {
+        return Err(ProofError::InvalidOutput);
+    }
+
     let serialized_tx = serialize(&tx);
     // Verify the challenge input
     if let Some(utxo) = &psbt.inputs[0].witness_utxo {
@@ -271,12 +300,13 @@ pub fn verify_proof(
         .map(|(i, res)| match res {
             Ok(txout) => (
                 i,
-                Ok(bitcoinconsensus::verify(
+                bitcoinconsensus::verify(
                     txout.script_pubkey.to_bytes().as_slice(),
                     txout.value,
                     &serialized_tx,
                     i,
-                )),
+                )
+                .map_err(|e| ProofError::SignatureValidation(i, format!("{:?}", e))),
             ),
             Err(err) => (i, Err(err)),
         })
@@ -286,35 +316,6 @@ pub fn verify_proof(
             i,
             format!("{:?}", res.err().unwrap()),
         ));
-    }
-
-    // calculate the spendable amount of the proof
-    let sum = tx
-        .input
-        .iter()
-        .map(|tx_in| {
-            if let Some(op) = outpoints.iter().find(|op| op.0 == tx_in.previous_output) {
-                op.1.value
-            } else {
-                0
-            }
-        })
-        .sum();
-
-    // verify the unspendable output
-    let pkh = PubkeyHash::from_hash(hash160::Hash::hash(&[0]));
-    let out_script_unspendable = Address {
-        payload: Payload::PubkeyHash(pkh),
-        network,
-    }
-    .script_pubkey();
-    if tx.output[0].script_pubkey != out_script_unspendable {
-        return Err(ProofError::InvalidOutput);
-    }
-
-    // inflow and outflow being equal means no miner fee
-    if tx.output[0].value != sum {
-        return Err(ProofError::InAndOutValueNotEqual);
     }
 
     Ok(sum)
@@ -336,8 +337,11 @@ mod test {
     use super::*;
     use base64ct::{Base64, Encoding};
     use bdk::bitcoin::consensus::encode::deserialize;
-    use bdk::bitcoin::{Address, Network};
+    use bdk::bitcoin::hashes::sha256;
+    use bdk::bitcoin::secp256k1::{ecdsa::SerializedSignature, Message, Secp256k1, SecretKey};
+    use bdk::bitcoin::{Address, EcdsaSighashType, Network, Witness};
     use bdk::wallet::get_funded_wallet;
+    use std::str::FromStr;
 
     #[test]
     fn test_proof() {
@@ -481,6 +485,35 @@ mod test {
         let mut psbt = get_signed_proof();
         psbt.inputs[1].final_script_sig = None;
         psbt.inputs[1].final_script_witness = None;
+
+        wallet.verify_proof(&psbt, message, None).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "SignatureValidation")]
+    fn invalid_signature() {
+        let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
+        let (wallet, _, _) = get_funded_wallet(descriptor);
+
+        let message = "This belongs to me.";
+        let mut psbt = get_signed_proof();
+        psbt.inputs[1].final_script_sig = None;
+
+        let secp = Secp256k1::new();
+        // privkey from milk sad ...
+        let privkey =
+            SecretKey::from_str("4dcaff8ed1975fe2cebbd7c03384902c2189a2e6de11f1bb1c9dc784e8e4d11e")
+                .expect("valid privkey");
+
+        let invalid_message =
+            Message::from_hashed_data::<sha256::Hash>("Invalid signing data".as_bytes());
+        let signature = secp.sign_ecdsa(&invalid_message, &privkey);
+
+        let mut invalid_witness = Witness::new();
+
+        let signature = SerializedSignature::from_signature(&signature);
+        invalid_witness.push_bitcoin_signature(&signature, EcdsaSighashType::All);
+        psbt.inputs[1].final_script_witness = Some(invalid_witness);
 
         wallet.verify_proof(&psbt, message, None).unwrap();
     }
