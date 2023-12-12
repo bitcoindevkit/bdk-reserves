@@ -38,8 +38,13 @@ jobs:
       - name: Pin dependencies for MSRV
         if: matrix.rust == '1.57.0'
         run: |
-          cargo update -p log:0.4.19 --precise 0.4.18
+          cargo update -p log:0.4.20 --precise 0.4.18
           cargo update -p tempfile --precise 3.6.0
+          cargo update -p webpki:0.22.4 --precise 0.22.0
+          cargo update -p rustls:0.20.9 --precise 0.20.8
+          cargo update -p sct:0.7.1 --precise 0.7.0
+          cargo update -p tokio:1.35.0 --precise 1.29.1
+          cargo update -p byteorder:1.5.0 --precise 1.4.3
       - name: Build
         run: cargo build
       - name: Clippy

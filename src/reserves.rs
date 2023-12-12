@@ -306,7 +306,7 @@ pub fn verify_proof(
                     &serialized_tx,
                     i,
                 )
-                .map_err(|e| ProofError::SignatureValidation(i, format!("{:?}", e)))
+                .map_err(|e| ProofError::SignatureValidation(i, format!("{:?}", e))),
             ),
             Err(err) => (i, Err(err)),
         })
@@ -337,14 +337,9 @@ mod test {
     use super::*;
     use base64ct::{Base64, Encoding};
     use bdk::bitcoin::consensus::encode::deserialize;
-    use bdk::bitcoin::secp256k1::{
-        Message,
-        Secp256k1,
-        SecretKey,
-        ecdsa::SerializedSignature,
-    };
-    use bdk::bitcoin::{Address, EcdsaSighashType, Network, Witness };
     use bdk::bitcoin::hashes::sha256;
+    use bdk::bitcoin::secp256k1::{ecdsa::SerializedSignature, Message, Secp256k1, SecretKey};
+    use bdk::bitcoin::{Address, EcdsaSighashType, Network, Witness};
     use bdk::wallet::get_funded_wallet;
     use std::str::FromStr;
 
@@ -506,9 +501,12 @@ mod test {
 
         let secp = Secp256k1::new();
         // privkey from milk sad ...
-        let privkey = SecretKey::from_str("4dcaff8ed1975fe2cebbd7c03384902c2189a2e6de11f1bb1c9dc784e8e4d11e").expect("valid privkey");
+        let privkey =
+            SecretKey::from_str("4dcaff8ed1975fe2cebbd7c03384902c2189a2e6de11f1bb1c9dc784e8e4d11e")
+                .expect("valid privkey");
 
-        let invalid_message = Message::from_hashed_data::<sha256::Hash>("Invalid signing data".as_bytes());
+        let invalid_message =
+            Message::from_hashed_data::<sha256::Hash>("Invalid signing data".as_bytes());
         let signature = secp.sign_ecdsa(&invalid_message, &privkey);
 
         let mut invalid_witness = Witness::new();
