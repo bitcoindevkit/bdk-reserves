@@ -1,6 +1,6 @@
 [package]
 name = "bdk-reserves"
-version = "0.28.0"
+version = "0.28.1"
 authors = ["Richard Ulrich <richard.ulrich@seba.swiss>"]
 edition = "2018"
 description = "Proof of reserves for bitcoin dev kit"
