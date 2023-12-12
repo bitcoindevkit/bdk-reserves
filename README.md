@@ -3,7 +3,7 @@
 
   <img src="./static/bdk.png" width="220" />
   <br>
-  <a href="https://seba.swiss"><img src="./static/seba-bank-logo-bank-lange-green-ohne-tagline.png" width="250" /></a>
+  <a href="https://www.aminagroup.com"><img src="./static/amina_logo.png" width="250" /></a>
 
   <p>
     <strong>Proof of reserves for Bitcoin dev kit</strong>
@@ -34,7 +34,7 @@ The `bdk-reserves` library provides an implementation of `proof-of-reserves` for
 * The implementation was inspired by <a href="https://github.com/bitcoin/bips/blob/master/bip-0127.mediawiki">BIP-0127</a> and <a href="https://github.com/bitcoin/bips/blob/master/bip-0322.mediawiki">BIP-0322</a>.
 
 ## Sponsorship
-The implementation of <b>bdk-reserves</b> was sponsored by <a href="https://seba.swiss">SEBA Bank</a>.
+The implementation of <b>bdk-reserves</b> was sponsored by <a href="https://www.aminagroup.com">AMINA Bank</a>.
 
 
 ## License
