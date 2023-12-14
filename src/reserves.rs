@@ -337,8 +337,7 @@ mod test {
     use super::*;
     use base64ct::{Base64, Encoding};
     use bdk::bitcoin::consensus::encode::deserialize;
-    use bdk::bitcoin::hashes::sha256;
-    use bdk::bitcoin::secp256k1::{ecdsa::SerializedSignature, Message, Secp256k1, SecretKey};
+    use bdk::bitcoin::secp256k1::ecdsa::{SerializedSignature, Signature};
     use bdk::bitcoin::{Address, EcdsaSighashType, Network, Witness};
     use bdk::wallet::get_funded_wallet;
     use std::str::FromStr;
@@ -499,20 +498,12 @@ mod test {
         let mut psbt = get_signed_proof();
         psbt.inputs[1].final_script_sig = None;
 
-        let secp = Secp256k1::new();
-        // privkey from milk sad ...
-        let privkey =
-            SecretKey::from_str("4dcaff8ed1975fe2cebbd7c03384902c2189a2e6de11f1bb1c9dc784e8e4d11e")
-                .expect("valid privkey");
-
-        let invalid_message =
-            Message::from_hashed_data::<sha256::Hash>("Invalid signing data".as_bytes());
-        let signature = secp.sign_ecdsa(&invalid_message, &privkey);
+        let invalid_signature = Signature::from_str("3045022100f3b7b0b1400287766edfe8ba66bc0412984cdb97da6bb4092d5dc63a84e1da6f02204da10796361dbeaeead8f68a23157dffa23b356ec14ec2c0c384ad68d582bb14").unwrap();
+        let invalid_signature = SerializedSignature::from_signature(&invalid_signature);
 
         let mut invalid_witness = Witness::new();
+        invalid_witness.push_bitcoin_signature(&invalid_signature, EcdsaSighashType::All);
 
-        let signature = SerializedSignature::from_signature(&signature);
-        invalid_witness.push_bitcoin_signature(&signature, EcdsaSighashType::All);
         psbt.inputs[1].final_script_witness = Some(invalid_witness);
 
         wallet.verify_proof(&psbt, message, None).unwrap();
