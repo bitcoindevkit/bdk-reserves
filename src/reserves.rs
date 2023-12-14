@@ -312,8 +312,6 @@ fn challenge_txin(message: &str) -> TxIn {
 #[cfg(test)]
 mod test {
     use super::*;
-    use base64ct::{Base64, Encoding};
-    use bdk::bitcoin::consensus::encode::deserialize;
     use bdk::bitcoin::secp256k1::ecdsa::{SerializedSignature, Signature};
     use bdk::bitcoin::{EcdsaSighashType, Network, Witness};
     use bdk::wallet::get_funded_wallet;
@@ -326,8 +324,9 @@ mod test {
 
         let message = "This belongs to me.";
         let psbt = wallet.create_proof(message).unwrap();
-        let psbt_ser = serialize(&psbt);
-        let psbt_b64 = Base64::encode_string(&psbt_ser);
+
+        let psbt_b64 = psbt.to_string();
+
         let expected = r#"cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////2johM0znoXIXT1lg+ySrvGrtq1IGXPJzpfi/emkV9iIAAAAAAP////8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qIgYDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+ME7OUmVwAA"#;
 
         assert_eq!(psbt_b64, expected);
@@ -357,8 +356,7 @@ mod test {
 
     fn get_signed_proof() -> PSBT {
         let psbt = "cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////2johM0znoXIXT1lg+ySrvGrtq1IGXPJzpfi/emkV9iIAAAAAAP////8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qAQcAAQhrAkcwRAIgDSE4PQ57JDiZ7otGkTqz35bi/e1pexYaYKWaveuvRd4CIFzVB4sAmgtdEVz2vHzs1iXc9iRKJ+KQOQb+C2DtPyvzASEDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+MAAA==";
-        let psbt = Base64::decode_vec(psbt).unwrap();
-        deserialize(&psbt).unwrap()
+        PSBT::from_str(psbt).unwrap()
     }
 
     #[test]
