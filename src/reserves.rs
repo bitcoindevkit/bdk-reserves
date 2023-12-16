@@ -23,7 +23,7 @@ use bdk::bitcoin::blockdata::script::{Builder, Script};
 use bdk::bitcoin::blockdata::transaction::{EcdsaSighashType, OutPoint, TxIn, TxOut};
 use bdk::bitcoin::consensus::encode::serialize;
 use bdk::bitcoin::hash_types::{PubkeyHash, Txid};
-use bdk::bitcoin::hashes::{hash160, sha256d, Hash};
+use bdk::bitcoin::hashes::{hash160, sha256, Hash};
 use bdk::bitcoin::util::psbt::{raw::Key, Input, PartiallySignedTransaction as PSBT};
 use bdk::bitcoin::{Network, Sequence, Transaction};
 use bdk::database::BatchDatabase;
@@ -368,9 +368,10 @@ pub fn verify_proof(
 /// Construct a challenge input with the message
 fn challenge_txin(message: &str) -> TxIn {
     let message = "Proof-of-Reserves: ".to_string() + message;
-    let message = sha256d::Hash::hash(message.as_bytes());
+    let message = sha256::Hash::hash(message.as_bytes());
+    let txid = Txid::from_inner(message.into_inner());
     TxIn {
-        previous_output: OutPoint::new(Txid::from_hash(message), 0),
+        previous_output: OutPoint::new(txid, 0),
         sequence: Sequence(0xFFFFFFFF),
         ..Default::default()
     }
@@ -394,7 +395,7 @@ mod test {
 
         let psbt_b64 = psbt.to_string();
 
-        let expected = r#"cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////2johM0znoXIXT1lg+ySrvGrtq1IGXPJzpfi/emkV9iIAAAAAAP////8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAEJE1RoaXMgYmVsb25ncyB0byBtZS4AAQEfUMMAAAAAAAAWABTs5SZXEFPahkVMngZneer50VAuaiIGAysFWAeL7DhpSoSTPWWTA+JXXa5+kWhZEUVBFb/WRIfjBOzlJlcAAA=="#;
+        let expected = r#"cHNidP8BAH4BAAAAAnazTpCbEI8dIHmilAK8aXK6Zj3nPcEy5vZzHMw/SzoyAAAAAAD/////2johM0znoXIXT1lg+ySrvGrtq1IGXPJzpfi/emkV9iIAAAAAAP////8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAEJE1RoaXMgYmVsb25ncyB0byBtZS4AAQEfUMMAAAAAAAAWABTs5SZXEFPahkVMngZneer50VAuaiIGAysFWAeL7DhpSoSTPWWTA+JXXa5+kWhZEUVBFb/WRIfjBOzlJlcAAA=="#;
 
         assert_eq!(psbt_b64, expected);
     }
@@ -422,7 +423,7 @@ mod test {
     }
 
     fn get_signed_proof() -> PSBT {
-        let psbt = "cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////2johM0znoXIXT1lg+ySrvGrtq1IGXPJzpfi/emkV9iIAAAAAAP////8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qAQcAAQhrAkcwRAIgDSE4PQ57JDiZ7otGkTqz35bi/e1pexYaYKWaveuvRd4CIFzVB4sAmgtdEVz2vHzs1iXc9iRKJ+KQOQb+C2DtPyvzASEDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+MAAA==";
+        let psbt = "cHNidP8BAH4BAAAAAnazTpCbEI8dIHmilAK8aXK6Zj3nPcEy5vZzHMw/SzoyAAAAAAD/////2johM0znoXIXT1lg+ySrvGrtq1IGXPJzpfi/emkV9iIAAAAAAP////8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAEJE1RoaXMgYmVsb25ncyB0byBtZS4AAQEfUMMAAAAAAAAWABTs5SZXEFPahkVMngZneer50VAuaiIGAysFWAeL7DhpSoSTPWWTA+JXXa5+kWhZEUVBFb/WRIfjBOzlJlcBBwABCGsCRzBEAiBfpF8pM16CA1zJLkvl2gZ5ziGHadpZt1/yWyiQ2dB8nwIgSdBcayBSRhQvvjZEEyGyaDSBWJOiPU+ww6KHAPKeB/wBIQMrBVgHi+w4aUqEkz1lkwPiV12ufpFoWRFFQRW/1kSH4wAA";
         PSBT::from_str(psbt).unwrap()
     }
 
