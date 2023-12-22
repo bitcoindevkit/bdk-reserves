@@ -14,7 +14,7 @@
     <a href="https://github.com/bitcoindevkit/bdk-reserves/blob/master/LICENSE"><img alt="MIT or Apache-2.0 Licensed" src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue.svg"/></a>
     <a href="https://github.com/bitcoindevkit/bdk-reserves/actions?query=workflow%3ACI"><img alt="CI Status" src="https://github.com/ulrichard/bdk-reserves/workflows/CI/badge.svg"></a>
     <a href="https://docs.rs/bdk-reserves"><img alt="API Docs" src="https://img.shields.io/badge/docs.rs-bdk_reserves-green"/></a>
-    <a href="https://blog.rust-lang.org/2021/12/02/Rust-1.57.0.html"><img alt="Rustc Version 1.57.0+" src="https://img.shields.io/badge/rustc-1.57.0%2B-lightgrey.svg"/></a>
+    <a href="https://blog.rust-lang.org/2022/08/11/Rust-1.63.0.html"><img alt="Rustc Version 1.63.0+" src="https://img.shields.io/badge/rustc-1.63.0%2B-lightgrey.svg"/></a>
     <a href="https://discord.gg/d7NkDKm"><img alt="Chat on Discord" src="https://img.shields.io/discord/753336465005608961?logo=discord"></a>
   </p>
 
@@ -50,15 +50,12 @@ at your option.
 
 ## Minimum Supported Rust Version (MSRV)
 
-This library should always compile with Rust **1.57.0**.
+This library should always compile with Rust **1.63.0**.
 
 To build with the MSRV you will need to pin the below dependencies:
 
 ```shell
-# log versions at 0.4.19+ have MSRV 1.60.0
-cargo update -p log:0.4.19 --precise 0.4.18
-# tempfile versions at 3.7.0+ have MSRV 1.63.0
-cargo update -p tempfile --precise 3.6.0
+cargo update -p home:0.5.9 --precise 0.5.5
 ```
 
 ## Contribution
