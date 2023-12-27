@@ -160,5 +160,9 @@ fn test_proof_multisig(
     let balance = wallets[0].get_balance()?;
     assert_eq!(spendable, balance.confirmed);
 
+    let tx = psbt.extract_tx();
+    let spendable = tx.verify_reserve_proof(message, &wallets[0])?;
+    assert_eq!(spendable, balance.confirmed);
+
     Ok(())
 }
