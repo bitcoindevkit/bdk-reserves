@@ -1,11 +1,11 @@
 use bdk::blockchain::{electrum::ElectrumBlockchain, Blockchain};
 use bdk::database::memory::MemoryDatabase;
 use bdk::electrum_client::Client;
-use bdk::electrum_client::ElectrumApi;
 use bdk::wallet::{AddressIndex, SyncOptions, Wallet};
 use bdk::SignOptions;
 use electrsd::bitcoind::bitcoincore_rpc::{bitcoin::Address, RpcApi};
 use electrsd::bitcoind::BitcoinD;
+use electrsd::electrum_client::ElectrumApi;
 use electrsd::ElectrsD;
 use std::str::FromStr;
 use std::time::Duration;
@@ -50,7 +50,7 @@ impl RegTestEnv {
         let foreign_addr = Address::from_str(MY_FOREIGN_ADDR).unwrap();
 
         // generate to the first receiving address of the test wallet
-        self.generate_to_address(10, &addr2);
+        self.generate_to_address(10, &addr2.address);
         // make the newly mined coins spendable
         self.generate_to_address(100, &foreign_addr);
 
