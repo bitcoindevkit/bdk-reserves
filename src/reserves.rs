@@ -32,8 +32,8 @@ use bdk::wallet::Wallet;
 use bdk::Error;
 
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
-use std::iter::FromIterator;
+
+pub use crate::txout_set::{TxOutSet, WalletAtHeight};
 
 pub const PSBT_IN_POR_COMMITMENT: u8 = 0x09;
 
@@ -159,139 +159,6 @@ where
         } else {
             psbt.verify_reserve_proof(message, self)
         }
-    }
-}
-
-/// Trait to look up `TxOut`s by `OutPoint`
-pub trait TxOutSet {
-    /// Lookup error return type
-    type Error;
-
-    /// Atomically look up txouts
-    fn get_prevouts<'a, I: IntoIterator<Item=&'a OutPoint>, T: FromIterator<Option<TxOut>>>(&self, outpoints: I) -> Result<T, Error>;
-}
-
-impl<D> TxOutSet for &Wallet<D>
-where
-    D: BatchDatabase,
-{
-    type Error = bdk::Error;
-
-    fn get_prevouts<'a, I: IntoIterator<Item=&'a OutPoint>, T: FromIterator<Option<TxOut>>>(&self, outpoints: I) -> Result<T, Error> {
-        let wallet_at_height = WalletAtHeight::new(self, u32::MAX);
-
-        wallet_at_height.get_prevouts(outpoints)
-    }
-}
-
-impl TxOutSet for &BTreeMap<OutPoint, TxOut> {
-    type Error = ();
-
-    fn get_prevouts<'a, I: IntoIterator<Item=&'a OutPoint>, T: FromIterator<Option<TxOut>>>(&self, outpoints: I) -> Result<T, Error> {
-        let iter = outpoints
-            .into_iter()
-            .map(|outpoint|
-                self
-                    .get(outpoint)
-                    .map(|txout| txout.to_owned())
-            );
-
-        Ok(T::from_iter(iter))
-    }
-}
-
-/// Adapter for a wallet to a TxOutSet at a particular block height
-pub struct WalletAtHeight<'a, D>
-where
-    D: BatchDatabase
-{
-    wallet: &'a Wallet<D>,
-    max_block_height: u32,
-}
-
-impl <'a, D> WalletAtHeight<'a, D>
-where
-    D: BatchDatabase
-{
-    pub fn new(wallet: &'a Wallet<D>, max_block_height: u32) -> Self {
-        WalletAtHeight {
-            wallet,
-            max_block_height,
-        }
-    }
-}
-
-impl<'a, D> TxOutSet for WalletAtHeight<'a, D>
-where
-    D: BatchDatabase
-{
-    type Error = bdk::Error;
-
-    fn get_prevouts<'b, I: IntoIterator<Item=&'b OutPoint>, T: FromIterator<Option<TxOut>>>(&self, outpoints: I) -> Result<T, Error> {
-        let outpoints: Vec<_> = outpoints
-            .into_iter()
-            .collect();
-
-        let outpoint_set: BTreeSet<&OutPoint> = outpoints
-            .iter()
-            .map(|outpoint| *outpoint)
-            .collect();
-
-        let tx_heights: BTreeMap<_, _> = if self.max_block_height < u32::MAX {
-            outpoint_set
-                .iter()
-                .map(|outpoint| {
-                    let tx_details = match self.wallet.get_tx(&outpoint.txid, false)? {
-                        Some(tx_details) => { tx_details },
-                        None => { return Ok((outpoint.txid, None)); },
-                    };
-
-                    Ok((
-                        outpoint.txid,
-                        tx_details.confirmation_time
-                            .map(|tx_details| tx_details.height)
-                    ))
-                })
-                .filter_map(|result| match result {
-                    Ok((txid, Some(height))) => { Some(Ok((txid, height))) },
-                    Ok((_, None)) => { None },
-                    Err(e) => {Some(Err(e)) },
-                })
-                .collect::<Result<_, Self::Error>>()?
-        } else {
-            // If max_block_height is u32::MAX, skip the potentially expensive tx detail lookup
-            BTreeMap::new()
-        };
-
-        let unspent: BTreeMap<_, _> = self.wallet
-            .list_unspent()?
-            .into_iter()
-            .filter_map(|output| {
-                if outpoint_set.contains(&output.outpoint) {
-                    let confirmation_height = tx_heights
-                        .get(&output.outpoint.txid)
-                        .unwrap_or(&u32::MAX);
-
-                    if *confirmation_height <= self.max_block_height {
-                        Some((output.outpoint, output.txout))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        let iter = outpoints
-            .into_iter()
-            .map(|outpoint|
-                unspent
-                    .get(outpoint)
-                    .map(|outpoint| outpoint.to_owned())
-            );
-
-        Ok(T::from_iter(iter))
     }
 }
 

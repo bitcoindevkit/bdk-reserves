@@ -12,3 +12,4 @@
 pub extern crate bdk;
 
 pub mod reserves;
+pub mod txout_set;
