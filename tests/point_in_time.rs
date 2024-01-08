@@ -66,12 +66,17 @@ fn point_in_time() {
         .unwrap();
     assert_eq!(spendable, old_balance.confirmed);
 
+    proof
+        .verify_reserve_proof(message, blockchain.txout_set_at_tip())
+        .unwrap();
+
     const MY_FOREIGN_ADDR: &str = "mpSFfNURcFTz2yJxBzRY9NhnozxeJ2AUC8";
     let foreign_addr = Address::from_str(MY_FOREIGN_ADDR).unwrap();
     let mut builder = wallet.build_tx();
     builder
         .add_recipient(foreign_addr.script_pubkey(), 1_000)
         .fee_rate(bdk::FeeRate::from_sat_per_vb(2.0));
+
     let (mut psbt, _) = builder.finish().unwrap();
     let finalized = wallet.sign(&mut psbt, signopts).unwrap();
     assert!(finalized);
@@ -93,6 +98,11 @@ fn point_in_time() {
     let new_height = blockchain.get_height().unwrap();
     let new_txouts_point_in_time = blockchain.txout_set_at_height(new_height);
 
-    proof.verify_reserve_proof(message, new_txouts_point_in_time)
-        .expect_err("expected proof utxos to be spent");
+    proof
+        .verify_reserve_proof(message, new_txouts_point_in_time)
+        .expect_err("expect proof utxos to be spent");
+
+    proof
+        .verify_reserve_proof(message, blockchain.txout_set_at_tip())
+        .expect_err("expect proof utxos to be spent at tip");
 }

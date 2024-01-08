@@ -33,7 +33,7 @@ use bdk::Error;
 
 use std::collections::BTreeMap;
 
-pub use crate::txout_set::{TxOutSet, PointInTimeTxOutSet, WalletAtHeight};
+pub use crate::txout_set::{HistoricalTxOutQuery, MaxHeightTxOutQuery, TipTxOutQuery, TxOutSet};
 
 pub const PSBT_IN_POR_COMMITMENT: u8 = 0x09;
 
@@ -153,7 +153,7 @@ where
         max_block_height: Option<u32>,
     ) -> Result<u64, ProofError> {
         if let Some(max_block_height) = max_block_height {
-            let txouts = WalletAtHeight::new(self, max_block_height);
+            let txouts = self.txout_set_confirmed_by_height(max_block_height);
 
             psbt.verify_reserve_proof(message, txouts)
         } else {
@@ -166,15 +166,22 @@ where
 pub trait ReserveProof {
     /// Verify a proof transaction.
     /// Look up utxos with get_prevout()
-    fn verify_reserve_proof<T: TxOutSet>(&self, message: &str, txouts: T) -> Result<u64, ProofError>;
+    fn verify_reserve_proof<T: TxOutSet>(
+        &self,
+        message: &str,
+        txouts: T,
+    ) -> Result<u64, ProofError>;
 
     /// Verify that this transaction correctly includes the challenge
     fn verify_challenge(&self, message: &str) -> Result<(), ProofError>;
 }
 
 impl ReserveProof for Transaction {
-    fn verify_reserve_proof<T: TxOutSet>(&self, message: &str, txouts: T) -> Result<u64, ProofError>
-    {
+    fn verify_reserve_proof<T: TxOutSet>(
+        &self,
+        message: &str,
+        txouts: T,
+    ) -> Result<u64, ProofError> {
         if self.output.len() != 1 {
             return Err(ProofError::WrongNumberOfOutputs);
         }
@@ -192,9 +199,7 @@ impl ReserveProof for Transaction {
 
         self.verify_challenge(message)?;
 
-        let outpoint_iter = self.input
-            .iter()
-            .map(|txin| &txin.previous_output);
+        let outpoint_iter = self.input.iter().map(|txin| &txin.previous_output);
 
         // Try to look up outpoints
         let prevouts: Vec<Option<TxOut>> = txouts
@@ -207,18 +212,12 @@ impl ReserveProof for Transaction {
             .enumerate()
             .skip(1)
             .map(|(i, txout)| match txout {
-                Some(txout) => {
-                    Ok((i, txout))
-                },
-                None => {
-                    Err(ProofError::OutpointNotFound(i))
-                },
+                Some(txout) => Ok((i, txout)),
+                None => Err(ProofError::OutpointNotFound(i)),
             })
             .collect::<Result<_, _>>()?;
 
-        let sum: u64 = prevouts.iter()
-            .map(|(_i, prevout)| prevout.value)
-            .sum();
+        let sum: u64 = prevouts.iter().map(|(_i, prevout)| prevout.value).sum();
 
         // inflow and outflow being equal means no miner fee
         if self.output[0].value != sum {
@@ -230,17 +229,15 @@ impl ReserveProof for Transaction {
         // Check that all inputs besides the challenge input are valid
         prevouts
             .iter()
-            .map(|(i, prevout)|
+            .map(|(i, prevout)| {
                 bitcoinconsensus::verify(
                     prevout.script_pubkey.to_bytes().as_slice(),
                     prevout.value,
                     &serialized_tx,
                     *i,
                 )
-                .map_err(|e|
-                    ProofError::SignatureValidation(*i, format!("{:?}", e))
-                ),
-            )
+                .map_err(|e| ProofError::SignatureValidation(*i, format!("{:?}", e)))
+            })
             .collect::<Result<(), _>>()?;
 
         // Check that all inputs besides the challenge input actually
@@ -262,21 +259,20 @@ impl ReserveProof for Transaction {
 
         prevouts
             .iter()
-            .map(|(i, prevout)|
+            .map(|(i, prevout)| {
                 match bitcoinconsensus::verify(
                     prevout.script_pubkey.to_bytes().as_slice(),
                     prevout.value,
                     &serialized_malleated_tx,
                     *i,
                 ) {
-                    Ok(_) => {
-                        Err(ProofError::SignatureValidation(*i, "Does not commit to challenge input".to_string()))
-                    },
-                    Err(_) => {
-                        Ok(())
-                    }
+                    Ok(_) => Err(ProofError::SignatureValidation(
+                        *i,
+                        "Does not commit to challenge input".to_string(),
+                    )),
+                    Err(_) => Ok(()),
                 }
-            )
+            })
             .collect::<Result<(), _>>()?;
 
         Ok(sum)
@@ -301,7 +297,11 @@ impl ReserveProof for PSBT {
     /// We can currently not validate whether it was valid at a certain block height.
     /// Since the caller provides the outpoints, he is also responsible to make sure they have enough confirmations.
     /// Returns the spendable amount of the proof.
-    fn verify_reserve_proof<T: TxOutSet>(&self, message: &str, txouts: T) -> Result<u64, ProofError> {
+    fn verify_reserve_proof<T: TxOutSet>(
+        &self,
+        message: &str,
+        txouts: T,
+    ) -> Result<u64, ProofError> {
         let tx = self.clone().extract_tx();
 
         // Redundant check to tx.verify_reserve_proof() to ensure error priority is not changed
@@ -310,19 +310,18 @@ impl ReserveProof for PSBT {
         }
 
         // verify that the inputs are signed, except the challenge
-        if let Some((i, _inp)) = self
-            .inputs
-            .iter()
-            .enumerate()
-            .skip(1)
-            .find(|(_i, inp)| inp.final_script_sig.is_none() && inp.final_script_witness.is_none())
+        if let Some((i, _inp)) =
+            self.inputs.iter().enumerate().skip(1).find(|(_i, inp)| {
+                inp.final_script_sig.is_none() && inp.final_script_witness.is_none()
+            })
         {
             return Err(ProofError::NotSignedInput(i));
         }
 
         // Verify the SIGHASH
         if let Some((i, _psbt_in)) = self.inputs.iter().enumerate().find(|(_i, psbt_in)| {
-            psbt_in.sighash_type.is_some() && psbt_in.sighash_type != Some(EcdsaSighashType::All.into())
+            psbt_in.sighash_type.is_some()
+                && psbt_in.sighash_type != Some(EcdsaSighashType::All.into())
         }) {
             return Err(ProofError::UnsupportedSighashType(i));
         }
@@ -352,10 +351,7 @@ fn challenge_txin(message: &str) -> TxIn {
 #[cfg(test)]
 mod test {
     use super::*;
-    use bdk::SignOptions;
-    use bdk::bitcoin::consensus::encode::serialize_hex;
     use bdk::bitcoin::consensus::encode::deserialize;
-    use bdk::bitcoin::secp256k1::Secp256k1;
     use bdk::bitcoin::secp256k1::ecdsa::{SerializedSignature, Signature};
     use bdk::bitcoin::{EcdsaSighashType, Transaction, Witness};
     use bdk::wallet::get_funded_wallet;
@@ -445,7 +441,9 @@ mod test {
         let message = "This belongs to me.";
         let tx = get_signed_proof_tx();
 
-        let spendable = tx.verify_reserve_proof(message, WalletAtHeight::new(&wallet, 90)).unwrap();
+        let spendable = tx
+            .verify_reserve_proof(message, wallet.txout_set_confirmed_by_height(90))
+            .unwrap();
 
         assert_eq!(spendable, 50_000);
     }
@@ -461,7 +459,9 @@ mod test {
         assert_eq!(spendable, 50_000);
 
         let tx = psbt.extract_tx();
-        let spendable = tx.verify_reserve_proof(message, WalletAtHeight::new(&wallet, 100)).unwrap();
+        let spendable = tx
+            .verify_reserve_proof(message, wallet.txout_set_confirmed_by_height(100))
+            .unwrap();
 
         assert_eq!(spendable, 50_000);
     }

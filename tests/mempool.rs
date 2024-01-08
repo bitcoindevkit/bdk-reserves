@@ -196,7 +196,10 @@ fn confirmed_tx() {
     let tx = psbt.extract_tx();
 
     let spendable = tx
-        .verify_reserve_proof(message, WalletAtHeight::new(&wallet, max_confirmation_height))
+        .verify_reserve_proof(
+            message,
+            wallet.txout_set_confirmed_by_height(max_confirmation_height),
+        )
         .unwrap();
     assert_eq!(spendable, new_balance.confirmed);
 }
