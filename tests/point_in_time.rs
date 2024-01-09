@@ -82,9 +82,17 @@ fn point_in_time() {
     let new_balance = wallet.get_balance().unwrap();
     assert_ne!(old_balance, new_balance);
 
+    // creating a new object is not necessary, but illustrates that no state is being saved across
+    // calls to verify_reserve_proof
     let new_txouts_point_in_time = blockchain.txout_set_at_height(old_height);
     let spendable = proof
         .verify_reserve_proof(message, new_txouts_point_in_time)
         .unwrap();
     assert_eq!(spendable, old_balance.confirmed);
+
+    let new_height = blockchain.get_height().unwrap();
+    let new_txouts_point_in_time = blockchain.txout_set_at_height(new_height);
+
+    proof.verify_reserve_proof(message, new_txouts_point_in_time)
+        .expect_err("expected proof utxos to be spent");
 }
