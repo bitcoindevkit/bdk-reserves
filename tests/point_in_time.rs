@@ -59,8 +59,10 @@ fn point_in_time() {
     let proof = psbt;
     assert!(finalized);
 
+    let txouts_point_in_time = blockchain.txout_set_at_height(old_height);
+
     let spendable = proof
-        .verify_reserve_proof(message, WalletAtHeight::new(&wallet, old_height))
+        .verify_reserve_proof(message, txouts_point_in_time)
         .unwrap();
     assert_eq!(spendable, old_balance.confirmed);
 
@@ -80,8 +82,9 @@ fn point_in_time() {
     let new_balance = wallet.get_balance().unwrap();
     assert_ne!(old_balance, new_balance);
 
+    let new_txouts_point_in_time = blockchain.txout_set_at_height(old_height);
     let spendable = proof
-        .verify_reserve_proof(message, WalletAtHeight::new(&wallet, old_height))
+        .verify_reserve_proof(message, new_txouts_point_in_time)
         .unwrap();
     assert_eq!(spendable, old_balance.confirmed);
 }

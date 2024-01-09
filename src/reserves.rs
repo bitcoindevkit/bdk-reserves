@@ -33,7 +33,7 @@ use bdk::Error;
 
 use std::collections::BTreeMap;
 
-pub use crate::txout_set::{TxOutSet, WalletAtHeight};
+pub use crate::txout_set::{TxOutSet, PointInTimeTxOutSet, WalletAtHeight};
 
 pub const PSBT_IN_POR_COMMITMENT: u8 = 0x09;
 
