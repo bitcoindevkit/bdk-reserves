@@ -212,7 +212,8 @@ impl TxOutSet for ElectrumClient {
     fn get_prevouts<'a, I, T>(&self, outpoints: I) -> Result<T, Self::Error>
     where
         I: IntoIterator<Item = &'a OutPoint>,
-        T: FromIterator<Option<TxOut>> {
+        T: FromIterator<Option<TxOut>>,
+    {
         let electrum_at_height = ElectrumAtHeight {
             client: self,
             maximum_txout_height: None,
@@ -241,7 +242,8 @@ impl<'a> TxOutSet for ElectrumAtHeight<'a> {
     fn get_prevouts<'b, I, T>(&self, outpoints: I) -> Result<T, Self::Error>
     where
         I: IntoIterator<Item = &'b OutPoint>,
-        T: FromIterator<Option<TxOut>> {
+        T: FromIterator<Option<TxOut>>,
+    {
         let outpoints: Vec<_> = outpoints.into_iter().collect();
 
         let input_txids: BTreeSet<Txid> = outpoints.iter().map(|outpoint| outpoint.txid).collect();
@@ -253,43 +255,42 @@ impl<'a> TxOutSet for ElectrumAtHeight<'a> {
         let transactions: BTreeMap<&Txid, Transaction> = input_txids
             .iter()
             .filter_map(|txid| {
-                self.client.transaction_get(txid)
+                self.client
+                    .transaction_get(txid)
                     .map(|tx| Some((txid, tx)))
                     .unwrap_or(None)
             })
             .collect();
 
-        let iter = outpoints.iter()
-            .map(|outpoint| {
-                let previous_tx = match transactions.get(&outpoint.txid) {
-                    Some(previous_tx) => previous_tx,
-                    None => {
-                        return Ok(None);
-                    },
-                };
-
-                let output = match previous_tx.output.get(outpoint.vout as usize) {
-                    Some(output) => output,
-                    None => {
-                        return Ok(None);
-                    },
-                };
-
-                let unspent = self.client.script_list_unspent(&output.script_pubkey)?;
-
-                let output_in_unspent_list = unspent
-                    .iter()
-                    .find(|unspent_info|
-                        unspent_info.tx_hash == outpoint.txid &&
-                        unspent_info.tx_pos == outpoint.vout as usize &&
-                        unspent_info.height <= (self.maximum_txout_height.unwrap_or(u32::MAX) as usize)
-                    );
-
-                match output_in_unspent_list {
-                    Some(_) => Ok(Some(output.to_owned())),
-                    None => Ok(None),
+        let iter = outpoints.iter().map(|outpoint| {
+            let previous_tx = match transactions.get(&outpoint.txid) {
+                Some(previous_tx) => previous_tx,
+                None => {
+                    return Ok(None);
                 }
+            };
+
+            let output = match previous_tx.output.get(outpoint.vout as usize) {
+                Some(output) => output,
+                None => {
+                    return Ok(None);
+                }
+            };
+
+            let unspent = self.client.script_list_unspent(&output.script_pubkey)?;
+
+            let output_in_unspent_list = unspent.iter().find(|unspent_info| {
+                unspent_info.tx_hash == outpoint.txid
+                    && unspent_info.tx_pos == outpoint.vout as usize
+                    && unspent_info.height
+                        <= (self.maximum_txout_height.unwrap_or(u32::MAX) as usize)
             });
+
+            match output_in_unspent_list {
+                Some(_) => Ok(Some(output.to_owned())),
+                None => Ok(None),
+            }
+        });
 
         Result::<T, Self::Error>::from_iter(iter)
     }
@@ -327,7 +328,7 @@ impl<'a> TxOutSet for EsploraAtHeight<'a> {
             .filter_map(|txid| {
                 let transaction = self.client.get_tx(txid).unwrap_or(None);
 
-                // Get the block height of the input transaction if 
+                // Get the block height of the input transaction if
                 // this TxOutSet is restricted to a specific height.
                 let height = if self.height.is_some() {
                     self.client
@@ -346,7 +347,9 @@ impl<'a> TxOutSet for EsploraAtHeight<'a> {
                     (None, Some(_height)) => None, //Should be unreachable really
                     (Some(_maximum_height), None) => None,
                     (Some(maximum_height), Some(height)) if height > maximum_height => None,
-                    (Some(_maximum_height), Some(_height)) => transaction.map(|transaction| (txid, transaction)),
+                    (Some(_maximum_height), Some(_height)) => {
+                        transaction.map(|transaction| (txid, transaction))
+                    }
                     (None, None) => transaction.map(|transaction| (txid, transaction)),
                 }
             })
