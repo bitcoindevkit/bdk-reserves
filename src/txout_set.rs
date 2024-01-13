@@ -2,8 +2,11 @@ use bdk::bitcoin::{OutPoint, Transaction, TxOut, Txid};
 use bdk::database::BatchDatabase;
 use bdk::wallet::Wallet;
 
+#[cfg(feature = "electrum")]
+use electrum_client::{Client as ElectrumClient, ElectrumApi};
+
 #[cfg(feature = "use-esplora-blocking")]
-use esplora_client::BlockingClient;
+use esplora_client::BlockingClient as EsploraClient;
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -196,15 +199,111 @@ where
     }
 }
 
+#[cfg(feature = "electrum")]
+pub struct ElectrumAtHeight<'a> {
+    client: &'a ElectrumClient,
+    maximum_txout_height: Option<u32>,
+}
+
+#[cfg(feature = "electrum")]
+impl TxOutSet for ElectrumClient {
+    type Error = electrum_client::Error;
+
+    fn get_prevouts<'a, I, T>(&self, outpoints: I) -> Result<T, Self::Error>
+    where
+        I: IntoIterator<Item = &'a OutPoint>,
+        T: FromIterator<Option<TxOut>> {
+        let electrum_at_height = ElectrumAtHeight {
+            client: self,
+            maximum_txout_height: None,
+        };
+
+        electrum_at_height.get_prevouts(outpoints)
+    }
+}
+
+#[cfg(feature = "electrum")]
+impl<'a> MaxHeightTxOutQuery<'a> for ElectrumClient {
+    type Target = ElectrumAtHeight<'a>;
+
+    fn txout_set_confirmed_by_height(&'a self, height: u32) -> Self::Target {
+        ElectrumAtHeight {
+            client: self,
+            maximum_txout_height: Some(height),
+        }
+    }
+}
+
+#[cfg(feature = "electrum")]
+impl<'a> TxOutSet for ElectrumAtHeight<'a> {
+    type Error = electrum_client::Error;
+
+    fn get_prevouts<'b, I, T>(&self, outpoints: I) -> Result<T, Self::Error>
+    where
+        I: IntoIterator<Item = &'b OutPoint>,
+        T: FromIterator<Option<TxOut>> {
+        let outpoints: Vec<_> = outpoints.into_iter().collect();
+
+        let input_txids: BTreeSet<Txid> = outpoints.iter().map(|outpoint| outpoint.txid).collect();
+
+        // avoiding the obvious batch_transaction_get optimization because
+        // I'm not sure how it handles cases where some transactions are present but not others
+        // FIXME: Probably should retain some types of errors here
+        // and report them later
+        let transactions: BTreeMap<&Txid, Transaction> = input_txids
+            .iter()
+            .filter_map(|txid| {
+                self.client.transaction_get(txid)
+                    .map(|tx| Some((txid, tx)))
+                    .unwrap_or(None)
+            })
+            .collect();
+
+        let iter = outpoints.iter()
+            .map(|outpoint| {
+                let previous_tx = match transactions.get(&outpoint.txid) {
+                    Some(previous_tx) => previous_tx,
+                    None => {
+                        return Ok(None);
+                    },
+                };
+
+                let output = match previous_tx.output.get(outpoint.vout as usize) {
+                    Some(output) => output,
+                    None => {
+                        return Ok(None);
+                    },
+                };
+
+                let unspent = self.client.script_list_unspent(&output.script_pubkey)?;
+
+                let output_in_unspent_list = unspent
+                    .iter()
+                    .find(|unspent_info|
+                        unspent_info.tx_hash == outpoint.txid &&
+                        unspent_info.tx_pos == outpoint.vout as usize &&
+                        unspent_info.height <= (self.maximum_txout_height.unwrap_or(u32::MAX) as usize)
+                    );
+
+                match output_in_unspent_list {
+                    Some(_) => Ok(Some(output.to_owned())),
+                    None => Ok(None),
+                }
+            });
+
+        Result::<T, Self::Error>::from_iter(iter)
+    }
+}
+
 #[cfg(feature = "use-esplora-blocking")]
 pub struct EsploraAtHeight<'a> {
-    client: &'a BlockingClient,
+    client: &'a EsploraClient,
     height: Option<u32>,
 }
 
 #[cfg(feature = "use-esplora-blocking")]
 impl<'a> EsploraAtHeight<'a> {
-    pub fn new(client: &'a BlockingClient, height: Option<u32>) -> Self {
+    pub fn new(client: &'a EsploraClient, height: Option<u32>) -> Self {
         Self { client, height }
     }
 }
@@ -220,7 +319,7 @@ impl<'a> TxOutSet for EsploraAtHeight<'a> {
     {
         let outpoints: Vec<_> = outpoints.into_iter().collect();
 
-        // Remove duplicate txids since the 
+        // Remove duplicate txids
         let input_txids: BTreeSet<Txid> = outpoints.iter().map(|outpoint| outpoint.txid).collect();
 
         let transactions: BTreeMap<&Txid, Transaction> = input_txids
@@ -306,7 +405,7 @@ impl<'a> TxOutSet for EsploraAtHeight<'a> {
 }
 
 #[cfg(feature = "use-esplora-blocking")]
-impl<'a> HistoricalTxOutQuery<'a> for BlockingClient {
+impl<'a> HistoricalTxOutQuery<'a> for EsploraClient {
     type Target = EsploraAtHeight<'a>;
 
     fn txout_set_at_height(&'a self, height: u32) -> Self::Target {
@@ -318,7 +417,7 @@ impl<'a> HistoricalTxOutQuery<'a> for BlockingClient {
 }
 
 #[cfg(feature = "use-esplora-blocking")]
-impl<'a> TxOutSet for BlockingClient {
+impl<'a> TxOutSet for EsploraClient {
     type Error = esplora_client::Error;
 
     fn get_prevouts<'b, I, T>(&self, outpoints: I) -> Result<T, Self::Error>
