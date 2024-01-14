@@ -43,6 +43,7 @@ impl RegTestEnv {
         &self.electrsd.electrum_url
     }
 
+    #[allow(dead_code)]
     /// returns the URL where an esplora client can connect to the embedded esplora server
     pub fn esplora_url(&self) -> &Option<String> {
         &self.electrsd.esplora_url

@@ -141,8 +141,7 @@ where
     {
         let outpoints: Vec<_> = outpoints.into_iter().collect();
 
-        let outpoint_set: BTreeSet<&OutPoint> =
-            outpoints.iter().map(|outpoint| *outpoint).collect();
+        let outpoint_set: BTreeSet<&OutPoint> = outpoints.iter().copied().collect();
 
         let tx_heights: BTreeMap<_, _> = if self.max_block_height < u32::MAX {
             outpoint_set

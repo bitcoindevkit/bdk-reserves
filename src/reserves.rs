@@ -227,18 +227,15 @@ impl ReserveProof for Transaction {
         let serialized_tx = serialize(&self);
 
         // Check that all inputs besides the challenge input are valid
-        prevouts
-            .iter()
-            .map(|(i, prevout)| {
-                bitcoinconsensus::verify(
-                    prevout.script_pubkey.to_bytes().as_slice(),
-                    prevout.value,
-                    &serialized_tx,
-                    *i,
-                )
-                .map_err(|e| ProofError::SignatureValidation(*i, format!("{:?}", e)))
-            })
-            .collect::<Result<(), _>>()?;
+        prevouts.iter().try_for_each(|(i, prevout)| {
+            bitcoinconsensus::verify(
+                prevout.script_pubkey.to_bytes().as_slice(),
+                prevout.value,
+                &serialized_tx,
+                *i,
+            )
+            .map_err(|e| ProofError::SignatureValidation(*i, format!("{:?}", e)))
+        })?;
 
         // Check that all inputs besides the challenge input actually
         // commit to the challenge input by modifying the challenge
@@ -257,23 +254,20 @@ impl ReserveProof for Transaction {
             serialize(&malleated_tx)
         };
 
-        prevouts
-            .iter()
-            .map(|(i, prevout)| {
-                match bitcoinconsensus::verify(
-                    prevout.script_pubkey.to_bytes().as_slice(),
-                    prevout.value,
-                    &serialized_malleated_tx,
+        prevouts.iter().try_for_each(|(i, prevout)| {
+            match bitcoinconsensus::verify(
+                prevout.script_pubkey.to_bytes().as_slice(),
+                prevout.value,
+                &serialized_malleated_tx,
+                *i,
+            ) {
+                Ok(_) => Err(ProofError::SignatureValidation(
                     *i,
-                ) {
-                    Ok(_) => Err(ProofError::SignatureValidation(
-                        *i,
-                        "Does not commit to challenge input".to_string(),
-                    )),
-                    Err(_) => Ok(()),
-                }
-            })
-            .collect::<Result<(), _>>()?;
+                    "Does not commit to challenge input".to_string(),
+                )),
+                Err(_) => Ok(()),
+            }
+        })?;
 
         Ok(sum)
     }
@@ -724,7 +718,7 @@ mod test {
         use bdk::bitcoin::hashes::hex::FromHex;
         let tx = <Vec<u8> as FromHex>::from_hex(s).unwrap();
 
-        deserialize(&mut tx.as_slice()).unwrap()
+        deserialize(tx.as_slice()).unwrap()
     }
 
     #[test]
@@ -736,6 +730,6 @@ mod test {
 
         let message = "This belongs to me.";
 
-        tx.verify_reserve_proof(&message, &wallet).unwrap();
+        tx.verify_reserve_proof(message, &wallet).unwrap();
     }
 }
