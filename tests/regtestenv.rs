@@ -1,4 +1,7 @@
+use bdk::bitcoin::Network;
 use bdk::blockchain::{electrum::ElectrumBlockchain, Blockchain};
+#[cfg(feature = "rpc")]
+use bdk::blockchain::{rpc::Auth as RpcAuth, RpcConfig};
 use bdk::database::memory::MemoryDatabase;
 use bdk::electrum_client::Client;
 use bdk::wallet::{AddressIndex, SyncOptions, Wallet};
@@ -30,6 +33,7 @@ impl RegTestEnv {
 
         let mut elect_conf = electrsd::Conf::default();
         elect_conf.view_stderr = false; // setting this to true will lead to very verbose logging
+        elect_conf.http_enabled = true;
         let elect_exe =
             electrsd::downloaded_exe_path().expect("We should always have downloaded path");
         let electrsd = ElectrsD::with_conf(elect_exe, &bitcoind, &elect_conf).unwrap();
@@ -37,12 +41,31 @@ impl RegTestEnv {
         RegTestEnv { bitcoind, electrsd }
     }
 
-    /// returns the URL where a client can connect to the embedded electrum server
+    #[allow(dead_code)]
+    #[cfg(feature = "rpc")]
+    pub fn bitcoind_conf(&self, wallet: String) -> RpcConfig {
+        RpcConfig {
+            url: self.bitcoind.rpc_url(),
+            auth: RpcAuth::Cookie { file: self.bitcoind.params.cookie_file.clone() },
+            network: Network::Regtest,
+            wallet_name: wallet,
+            sync_params: None,
+        }
+    }
+
+    /// returns the URL where an electrum client can connect to the embedded electrum server
     pub fn electrum_url(&self) -> &str {
         &self.electrsd.electrum_url
     }
 
+    #[allow(dead_code)]
+    /// returns the URL where an esplora client can connect to the embedded esplora server
+    pub fn esplora_url(&self) -> &Option<String> {
+        &self.electrsd.esplora_url
+    }
+
     /// generates some blocks to have some coins to test with
+    /// @wallets: either a single wallet, or all the signer wallets that belong to the same multisig.
     pub fn generate(&self, wallets: &[&Wallet<MemoryDatabase>]) {
         let addr2 = wallets[0].get_address(AddressIndex::Peek(1)).unwrap();
         let addr1 = wallets[0].get_address(AddressIndex::Peek(0)).unwrap();
@@ -89,7 +112,7 @@ impl RegTestEnv {
             .for_each(|wallet| wallet.sync(&blockchain, SyncOptions::default()).unwrap());
     }
 
-    fn generate_to_address(&self, blocks: usize, address: &Address) {
+    pub fn generate_to_address(&self, blocks: usize, address: &Address) {
         let old_height = self
             .electrsd
             .client

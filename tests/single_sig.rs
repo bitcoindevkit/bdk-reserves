@@ -38,5 +38,10 @@ fn test_proof(#[case] descriptor: &'static str) -> Result<(), ProofError> {
     let spendable = wallet.verify_proof(&psbt, message, None)?;
     assert_eq!(spendable, balance.confirmed);
 
+    let tx = psbt.extract_tx();
+
+    let spendable = tx.verify_reserve_proof(message, &wallet).unwrap();
+    assert_eq!(spendable, balance.confirmed);
+
     Ok(())
 }
