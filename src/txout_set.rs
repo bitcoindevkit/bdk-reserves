@@ -1,4 +1,6 @@
-use bdk::bitcoin::{OutPoint, Transaction, TxOut, Txid};
+use bdk::bitcoin::{OutPoint, TxOut};
+#[cfg(any(feature = "electrum", feature = "use-esplora-blocking"))]
+use bdk::bitcoin::{Transaction, Txid};
 use bdk::database::BatchDatabase;
 use bdk::wallet::Wallet;
 
