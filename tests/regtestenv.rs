@@ -1,4 +1,7 @@
+use bdk::bitcoin::Network;
 use bdk::blockchain::{electrum::ElectrumBlockchain, Blockchain};
+#[cfg(feature = "rpc")]
+use bdk::blockchain::{rpc::Auth as RpcAuth, RpcConfig};
 use bdk::database::memory::MemoryDatabase;
 use bdk::electrum_client::Client;
 use bdk::wallet::{AddressIndex, SyncOptions, Wallet};
@@ -36,6 +39,18 @@ impl RegTestEnv {
         let electrsd = ElectrsD::with_conf(elect_exe, &bitcoind, &elect_conf).unwrap();
 
         RegTestEnv { bitcoind, electrsd }
+    }
+
+    #[allow(dead_code)]
+    #[cfg(feature = "rpc")]
+    pub fn bitcoind_conf(&self, wallet: String) -> RpcConfig {
+        RpcConfig {
+            url: self.bitcoind.rpc_url(),
+            auth: RpcAuth::Cookie { file: self.bitcoind.params.cookie_file.clone() },
+            network: Network::Regtest,
+            wallet_name: wallet,
+            sync_params: None,
+        }
     }
 
     /// returns the URL where an electrum client can connect to the embedded electrum server

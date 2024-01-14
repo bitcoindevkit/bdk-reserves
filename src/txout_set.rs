@@ -1,8 +1,13 @@
 use bdk::bitcoin::{OutPoint, TxOut};
+#[cfg(any(feature = "rpc"))]
+use bdk::bitcoin::Script;
 #[cfg(any(feature = "electrum", feature = "use-esplora-blocking"))]
 use bdk::bitcoin::{Transaction, Txid};
 use bdk::database::BatchDatabase;
 use bdk::wallet::Wallet;
+
+#[cfg(feature = "rpc")]
+use bitcoincore_rpc::{Client as RpcClient, RpcApi};
 
 #[cfg(feature = "electrum")]
 use electrum_client::{Client as ElectrumClient, ElectrumApi};
@@ -197,6 +202,79 @@ where
             .map(|outpoint| unspent.get(outpoint).map(|outpoint| outpoint.to_owned()));
 
         Ok(T::from_iter(iter))
+    }
+}
+
+#[cfg(feature = "rpc")]
+pub struct RpcAtHeight<'a> {
+    client: &'a RpcClient,
+    maximum_txout_height: Option<u32>,
+}
+
+#[cfg(feature = "rpc")]
+impl TxOutSet for RpcClient {
+    type Error = bitcoincore_rpc::Error;
+
+    fn get_prevouts<'a, I, T>(&self, outpoints: I) -> Result<T, Self::Error>
+    where
+        I: IntoIterator<Item = &'a OutPoint>,
+        T: FromIterator<Option<TxOut>>,
+    {
+        let rpc_at_height = RpcAtHeight { client: self, maximum_txout_height: None };
+
+        rpc_at_height.get_prevouts(outpoints)
+    }
+}
+
+#[cfg(feature = "rpc")]
+impl<'a> MaxHeightTxOutQuery<'a> for RpcClient {
+    type Target = RpcAtHeight<'a>;
+
+    fn txout_set_confirmed_by_height(&'a self, height: u32) -> Self::Target {
+        RpcAtHeight { client: self, maximum_txout_height: Some(height) }
+    }
+}
+
+#[cfg(feature = "rpc")]
+impl<'a> TxOutSet for RpcAtHeight<'a> {
+    type Error = bitcoincore_rpc::Error;
+
+    fn get_prevouts<'b, I, T>(&self, outpoints: I) -> Result<T, Self::Error>
+    where
+        I: IntoIterator<Item = &'b OutPoint>,
+        T: FromIterator<Option<TxOut>>,
+    {
+        let outpoints: Vec<_> = outpoints.into_iter().collect();
+
+        let iter = outpoints.iter().map(|outpoint| {
+            let prevout = match self.client.get_tx_out(&outpoint.txid, outpoint.vout, Some(false))? {
+                Some(prevout) => prevout,
+                None => {
+                    return Ok(None);
+                }
+            };
+
+            if let Some(maximum_txout_height) = self.maximum_txout_height {
+                let blockchain_tip_info = self.client.get_block_header_info(&prevout.bestblock)?;
+
+                let block_height = blockchain_tip_info.height - (prevout.confirmations as usize) + 1;
+
+                if block_height > (maximum_txout_height as usize) {
+                    return Ok(None);
+                }
+            };
+
+            let output_script_pubkey: Script = prevout.script_pub_key.hex.into();
+
+            let txout = TxOut {
+                script_pubkey: output_script_pubkey.clone(),
+                value: prevout.value.to_sat(),
+            };
+
+            Ok(Some(txout))
+        });
+
+        Result::<T, Self::Error>::from_iter(iter)
     }
 }
 

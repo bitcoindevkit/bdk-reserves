@@ -1,38 +1,45 @@
-#[cfg(any(feature = "electrum", feature = "use-esplora-blocking"))]
+#[cfg(any(feature = "electrum", feature = "rpc", feature = "use-esplora-blocking"))]
 mod regtestenv;
 
-#[cfg(any(feature = "electrum", feature = "use-esplora-blocking"))]
+#[cfg(any(feature = "electrum", feature = "rpc", feature = "use-esplora-blocking"))]
 use bdk::bitcoin::Network;
 #[cfg(feature = "electrum")]
 use bdk::blockchain::electrum::ElectrumBlockchain;
 #[cfg(feature = "use-esplora-blocking")]
 use bdk::blockchain::esplora::EsploraBlockchain;
-#[cfg(any(feature = "electrum", feature = "use-esplora-blocking"))]
+#[cfg(feature = "rpc")]
+use bdk::blockchain::rpc::RpcBlockchain;
+#[cfg(feature = "rpc")]
+use bdk::blockchain::ConfigurableBlockchain;
+#[cfg(any(feature = "electrum", feature = "rpc", feature = "use-esplora-blocking"))]
 use bdk::blockchain::{Blockchain, GetHeight};
-#[cfg(any(feature = "electrum", feature = "use-esplora-blocking"))]
+#[cfg(any(feature = "electrum", feature = "rpc", feature = "use-esplora-blocking"))]
 use bdk::database::memory::MemoryDatabase;
-#[cfg(any(feature = "electrum", feature = "use-esplora-blocking"))]
+#[cfg(any(feature = "electrum", feature = "rpc", feature = "use-esplora-blocking"))]
 use bdk::wallet::{SyncOptions, Wallet};
-#[cfg(any(feature = "electrum", feature = "use-esplora-blocking"))]
+#[cfg(any(feature = "electrum", feature = "rpc", feature = "use-esplora-blocking"))]
 use bdk::Error;
-#[cfg(any(feature = "electrum", feature = "use-esplora-blocking"))]
+#[cfg(any(feature = "electrum", feature = "rpc", feature = "use-esplora-blocking"))]
 use bdk::SignOptions;
-#[cfg(any(feature = "electrum", feature = "use-esplora-blocking"))]
+#[cfg(any(feature = "electrum", feature = "rpc", feature = "use-esplora-blocking"))]
 use bdk_reserves::reserves::*;
-#[cfg(any(feature = "electrum", feature = "use-esplora-blocking"))]
+#[cfg(any(feature = "electrum", feature = "rpc", feature = "use-esplora-blocking"))]
 use electrsd::bitcoind::bitcoincore_rpc::bitcoin::Address;
+
+#[cfg(feature = "rpc")]
+use bitcoincore_rpc::Client as RpcClient;
 
 #[cfg(feature = "electrum")]
 use electrum_client::Client as ElectrumClient;
 
 #[cfg(feature = "use-esplora-blocking")]
 use esplora_client::{BlockingClient as EsploraClient, Builder};
-#[cfg(any(feature = "electrum", feature = "use-esplora-blocking"))]
+#[cfg(any(feature = "electrum", feature = "rpc", feature = "use-esplora-blocking"))]
 use regtestenv::RegTestEnv;
-#[cfg(any(feature = "electrum", feature = "use-esplora-blocking"))]
+#[cfg(any(feature = "electrum", feature = "rpc", feature = "use-esplora-blocking"))]
 use std::str::FromStr;
 
-#[cfg(any(feature = "electrum", feature = "use-esplora-blocking"))]
+#[cfg(any(feature = "electrum", feature = "rpc", feature = "use-esplora-blocking"))]
 fn construct_wallet(desc: &str, network: Network) -> Result<Wallet<MemoryDatabase>, Error> {
     let wallet = Wallet::new(desc, None, network, MemoryDatabase::default())?;
 
@@ -73,7 +80,7 @@ where
     let spendable = proof
         .verify_reserve_proof(message, txouts_point_in_time)
         .unwrap();
-    assert_eq!(spendable, old_balance.confirmed);
+    assert_eq!(spendable, dbg!(old_balance.confirmed));
 
     proof
         .verify_reserve_proof(message, blockchain.txout_set_at_tip())
@@ -116,7 +123,7 @@ where
         .expect_err("expect proof utxos to be spent at tip");
 }
 
-#[cfg(feature = "electrum")]
+#[cfg(any(feature = "electrum", feature = "rpc"))]
 fn confirmed_by<B, C>(regtestenv: RegTestEnv, blockchain: B)
 where
     B: Blockchain + GetHeight + std::ops::Deref<Target = C>,
@@ -145,14 +152,14 @@ where
     let proof = psbt;
     assert!(finalized);
 
-    let txouts = blockchain.txout_set_confirmed_by_height(old_height);
-
-    let spendable = proof.verify_reserve_proof(message, txouts).unwrap();
-    assert_eq!(spendable, old_balance.confirmed);
-
     let spendable = proof
         .verify_reserve_proof(message, blockchain.txout_set_at_tip())
         .unwrap();
+    assert_eq!(spendable, dbg!(old_balance.confirmed));
+
+    let txouts = blockchain.txout_set_confirmed_by_height(old_height);
+
+    let spendable = proof.verify_reserve_proof(message, txouts).unwrap();
     assert_eq!(spendable, old_balance.confirmed);
 
     const MY_FOREIGN_ADDR: &str = "mpSFfNURcFTz2yJxBzRY9NhnozxeJ2AUC8";
@@ -200,6 +207,18 @@ fn test_electrum_confirmed_by() {
     let blockchain = ElectrumBlockchain::from(client);
 
     confirmed_by::<ElectrumBlockchain, ElectrumClient>(regtestenv, blockchain);
+}
+
+#[test]
+#[cfg(feature = "rpc")]
+fn test_bitcoincore_rpc_confirmed_by() {
+    let regtestenv = RegTestEnv::new();
+
+    let config = regtestenv.bitcoind_conf("".to_string());
+
+    let blockchain = RpcBlockchain::from_config(&config).unwrap();
+
+    confirmed_by::<RpcBlockchain, RpcClient>(regtestenv, blockchain);
 }
 
 #[test]
