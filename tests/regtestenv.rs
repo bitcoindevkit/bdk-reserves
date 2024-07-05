@@ -3,7 +3,10 @@ use bdk::database::memory::MemoryDatabase;
 use bdk::electrum_client::Client;
 use bdk::wallet::{AddressIndex, SyncOptions, Wallet};
 use bdk::SignOptions;
-use electrsd::bitcoind::bitcoincore_rpc::{bitcoin::Address, RpcApi};
+use electrsd::bitcoind::bitcoincore_rpc::{
+    bitcoin::{network::constants::Network, Address},
+    RpcApi,
+};
 use electrsd::bitcoind::BitcoinD;
 use electrsd::electrum_client::ElectrumApi;
 use electrsd::ElectrsD;
@@ -47,7 +50,10 @@ impl RegTestEnv {
         let addr2 = wallets[0].get_address(AddressIndex::Peek(1)).unwrap();
         let addr1 = wallets[0].get_address(AddressIndex::Peek(0)).unwrap();
         const MY_FOREIGN_ADDR: &str = "mpSFfNURcFTz2yJxBzRY9NhnozxeJ2AUC8";
-        let foreign_addr = Address::from_str(MY_FOREIGN_ADDR).unwrap();
+        let foreign_addr = Address::from_str(MY_FOREIGN_ADDR)
+            .unwrap()
+            .require_network(Network::Testnet)
+            .unwrap();
 
         // generate to the first receiving address of the test wallet
         self.generate_to_address(10, &addr2.address);
@@ -60,8 +66,8 @@ impl RegTestEnv {
             wallet.sync(&blockchain, SyncOptions::default()).unwrap();
             let balance = wallet.get_balance().unwrap();
             assert!(
-                balance.confirmed == 5_000_000_000,
-                "balance of wallet {} is {} but should be 5'000'000'000",
+                balance.confirmed == 50_000_000_000,
+                "balance of wallet {} is {} but should be 50_000_000_000",
                 i,
                 balance
             );
@@ -69,7 +75,7 @@ impl RegTestEnv {
 
         let mut builder = wallets[0].build_tx();
         builder
-            .add_recipient(addr1.script_pubkey(), 1_000_000)
+            .add_recipient(addr1.address.script_pubkey(), 1_000_000)
             .fee_rate(bdk::FeeRate::from_sat_per_vb(2.0));
         let (mut psbt, _) = builder.finish().unwrap();
         let signopts = SignOptions {
