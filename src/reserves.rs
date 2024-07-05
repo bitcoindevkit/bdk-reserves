@@ -18,14 +18,15 @@
 //! https://github.com/bitcoin/bips/blob/master/bip-0127.mediawiki
 //! https://github.com/bitcoin/bips/blob/master/bip-0322.mediawiki
 
+use bdk::bitcoin::address::Payload;
 use bdk::bitcoin::blockdata::opcodes;
 use bdk::bitcoin::blockdata::script::{Builder, Script};
-use bdk::bitcoin::blockdata::transaction::{EcdsaSighashType, OutPoint, TxIn, TxOut};
+use bdk::bitcoin::blockdata::transaction::{OutPoint, TxIn, TxOut};
 use bdk::bitcoin::consensus::encode::serialize;
 use bdk::bitcoin::hash_types::{PubkeyHash, Txid};
 use bdk::bitcoin::hashes::{hash160, sha256d, Hash};
-use bdk::bitcoin::util::address::Payload;
-use bdk::bitcoin::util::psbt::{Input, PartiallySignedTransaction as PSBT};
+use bdk::bitcoin::psbt::{Input, PartiallySignedTransaction as PSBT};
+use bdk::bitcoin::sighash::EcdsaSighashType;
 use bdk::bitcoin::{Address, Network, Sequence};
 use bdk::database::BatchDatabase;
 use bdk::wallet::tx_builder::TxOrdering;
@@ -114,16 +115,13 @@ where
                 value: 0,
                 script_pubkey: Builder::new().push_opcode(opcodes::OP_TRUE).into_script(),
             }),
-            final_script_sig: Some(Script::default()), /* "finalize" the input with an empty scriptSig */
+            final_script_sig: Some(Script::empty().into()), /* "finalize" the input with an empty scriptSig */
             ..Default::default()
         };
 
-        let pkh = PubkeyHash::from_hash(hash160::Hash::hash(&[0]));
-        let out_script_unspendable = Address {
-            payload: Payload::PubkeyHash(pkh),
-            network: self.network(),
-        }
-        .script_pubkey();
+        let pkh = PubkeyHash::from_raw_hash(hash160::Hash::hash(&[0]));
+        let out_script_unspendable =
+            Address::new(self.network(), Payload::PubkeyHash(pkh)).script_pubkey();
 
         let mut builder = self.build_tx();
         builder
@@ -257,12 +255,8 @@ pub fn verify_proof(
     }
 
     // verify the unspendable output
-    let pkh = PubkeyHash::from_hash(hash160::Hash::hash(&[0]));
-    let out_script_unspendable = Address {
-        payload: Payload::PubkeyHash(pkh),
-        network,
-    }
-    .script_pubkey();
+    let pkh = PubkeyHash::from_raw_hash(hash160::Hash::hash(&[0]));
+    let out_script_unspendable = Address::new(network, Payload::PubkeyHash(pkh)).script_pubkey();
     if tx.output[0].script_pubkey != out_script_unspendable {
         return Err(ProofError::InvalidOutput);
     }
@@ -326,7 +320,7 @@ fn challenge_txin(message: &str) -> TxIn {
     let message = "Proof-of-Reserves: ".to_string() + message;
     let message = sha256d::Hash::hash(message.as_bytes());
     TxIn {
-        previous_output: OutPoint::new(Txid::from_hash(message), 0),
+        previous_output: OutPoint::new(Txid::from_raw_hash(message), 0),
         sequence: Sequence(0xFFFFFFFF),
         ..Default::default()
     }
@@ -336,10 +330,10 @@ fn challenge_txin(message: &str) -> TxIn {
 mod test {
     use super::*;
     use base64ct::{Base64, Encoding};
-    use bdk::bitcoin::consensus::encode::deserialize;
     use bdk::bitcoin::hashes::sha256;
     use bdk::bitcoin::secp256k1::{ecdsa::SerializedSignature, Message, Secp256k1, SecretKey};
-    use bdk::bitcoin::{Address, EcdsaSighashType, Network, Witness};
+    use bdk::bitcoin::sighash::EcdsaSighashType;
+    use bdk::bitcoin::{Address, Network, Witness};
     use bdk::wallet::get_funded_wallet;
     use std::str::FromStr;
 
@@ -350,7 +344,7 @@ mod test {
 
         let message = "This belongs to me.";
         let psbt = wallet.create_proof(message).unwrap();
-        let psbt_ser = serialize(&psbt);
+        let psbt_ser = psbt.serialize();
         let psbt_b64 = Base64::encode_string(&psbt_ser);
         let expected = r#"cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////2johM0znoXIXT1lg+ySrvGrtq1IGXPJzpfi/emkV9iIAAAAAAP////8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qIgYDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+ME7OUmVwAA"#;
 
@@ -382,7 +376,7 @@ mod test {
     fn get_signed_proof() -> PSBT {
         let psbt = "cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////2johM0znoXIXT1lg+ySrvGrtq1IGXPJzpfi/emkV9iIAAAAAAP////8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qAQcAAQhrAkcwRAIgDSE4PQ57JDiZ7otGkTqz35bi/e1pexYaYKWaveuvRd4CIFzVB4sAmgtdEVz2vHzs1iXc9iRKJ+KQOQb+C2DtPyvzASEDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+MAAA==";
         let psbt = Base64::decode_vec(psbt).unwrap();
-        deserialize(&psbt).unwrap()
+        PSBT::deserialize(&psbt).unwrap()
     }
 
     #[test]
@@ -540,12 +534,9 @@ mod test {
         let message = "This belongs to me.";
         let mut psbt = get_signed_proof();
 
-        let pkh = PubkeyHash::from_hash(hash160::Hash::hash(&[0, 1, 2, 3]));
-        let out_script_unspendable = Address {
-            payload: Payload::PubkeyHash(pkh),
-            network: Network::Testnet,
-        }
-        .script_pubkey();
+        let pkh = PubkeyHash::from_raw_hash(hash160::Hash::hash(&[0, 1, 2, 3]));
+        let out_script_unspendable =
+            Address::new(Network::Testnet, Payload::PubkeyHash(pkh)).script_pubkey();
         psbt.unsigned_tx.output[0].script_pubkey = out_script_unspendable;
 
         wallet.verify_proof(&psbt, message, None).unwrap();

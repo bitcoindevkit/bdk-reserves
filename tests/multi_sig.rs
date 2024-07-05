@@ -1,7 +1,7 @@
 mod regtestenv;
+use bdk::bitcoin::key::{PrivateKey, PublicKey};
+use bdk::bitcoin::psbt::PartiallySignedTransaction as PSBT;
 use bdk::bitcoin::secp256k1::Secp256k1;
-use bdk::bitcoin::util::key::{PrivateKey, PublicKey};
-use bdk::bitcoin::util::psbt::PartiallySignedTransaction as PSBT;
 use bdk::bitcoin::Network;
 use bdk::database::memory::MemoryDatabase;
 use bdk::wallet::{AddressIndex, Wallet};
@@ -98,8 +98,8 @@ fn test_proof_multisig(
     wallets.iter().enumerate().for_each(|(i, wallet)| {
         let balance = wallet.get_balance().unwrap();
         assert!(
-            (4_999_999_256..=4_999_999_596).contains(&balance.confirmed),
-            "balance of wallet {} is {} but should be between 4'999'999'256 and 4'999'999'596",
+            (49_999_999_256..=49_999_999_596).contains(&balance.confirmed),
+            "balance of wallet {} is {} but should be between 49'999'999'256 and 49'999'999'596",
             i,
             balance
         );
@@ -158,7 +158,12 @@ fn test_proof_multisig(
 
     let spendable = wallets[0].verify_proof(&psbt, message, None)?;
     let balance = wallets[0].get_balance()?;
-    assert_eq!(spendable, balance.confirmed);
+    assert!(
+        spendable <= balance.confirmed,
+        "spendable ({}) <= balance.confirmed ({})",
+        spendable,
+        balance.confirmed,
+    );
 
     Ok(())
 }

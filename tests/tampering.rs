@@ -1,4 +1,4 @@
-use bdk::bitcoin::blockdata::transaction::EcdsaSighashType;
+use bdk::bitcoin::sighash::EcdsaSighashType;
 use bdk::wallet::get_funded_wallet;
 use bdk::SignOptions;
 use bdk_reserves::reserves::*;
