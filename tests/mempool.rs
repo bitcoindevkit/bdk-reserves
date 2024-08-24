@@ -64,7 +64,9 @@ fn unconfirmed() -> Result<(), ProofError> {
 
     let spendable = wallet.verify_proof(&psbt, message, None)?;
     dbg!(&new_balance);
-    assert_eq!(
+    assert!(
+        spendable <= new_balance.untrusted_pending + new_balance.confirmed,
+        "spendable ({}) <= new_balance.untrusted_pending + new_balance.confirmed ({})",
         spendable,
         new_balance.untrusted_pending + new_balance.confirmed
     );

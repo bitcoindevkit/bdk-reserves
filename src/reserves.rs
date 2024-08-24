@@ -19,12 +19,13 @@
 //! https://github.com/bitcoin/bips/blob/master/bip-0322.mediawiki
 
 use bdk::bitcoin::blockdata::opcodes;
-use bdk::bitcoin::blockdata::script::{Builder, Script};
-use bdk::bitcoin::blockdata::transaction::{EcdsaSighashType, OutPoint, TxIn, TxOut};
+use bdk::bitcoin::blockdata::script::{Builder, Script, ScriptBuf};
+use bdk::bitcoin::blockdata::transaction::{OutPoint, TxIn, TxOut};
 use bdk::bitcoin::consensus::encode::serialize;
 use bdk::bitcoin::hash_types::{PubkeyHash, Txid};
 use bdk::bitcoin::hashes::{hash160, sha256d, Hash};
-use bdk::bitcoin::util::psbt::{Input, PartiallySignedTransaction as PSBT};
+use bdk::bitcoin::psbt::{Input, PartiallySignedTransaction as PSBT};
+use bdk::bitcoin::sighash::EcdsaSighashType;
 use bdk::bitcoin::{Network, Sequence};
 use bdk::database::BatchDatabase;
 use bdk::wallet::tx_builder::TxOrdering;
@@ -113,12 +114,12 @@ where
                 value: 0,
                 script_pubkey: Builder::new().push_opcode(opcodes::OP_TRUE).into_script(),
             }),
-            final_script_sig: Some(Script::default()), /* "finalize" the input with an empty scriptSig */
+            final_script_sig: Some(Script::empty().into()), /* "finalize" the input with an empty scriptSig */
             ..Default::default()
         };
 
-        let pkh = PubkeyHash::from_hash(hash160::Hash::hash(&[0]));
-        let out_script_unspendable = Script::new_p2pkh(&pkh);
+        let pkh = PubkeyHash::from_raw_hash(hash160::Hash::hash(&[0]));
+        let out_script_unspendable = ScriptBuf::new_p2pkh(&pkh);
 
         let mut builder = self.build_tx();
         builder
@@ -252,8 +253,8 @@ pub fn verify_proof(
     }
 
     // verify the unspendable output
-    let pkh = PubkeyHash::from_hash(hash160::Hash::hash(&[0]));
-    let out_script_unspendable = Script::new_p2pkh(&pkh);
+    let pkh = PubkeyHash::from_raw_hash(hash160::Hash::hash(&[0]));
+    let out_script_unspendable = ScriptBuf::new_p2pkh(&pkh);
 
     if tx.output[0].script_pubkey != out_script_unspendable {
         return Err(ProofError::InvalidOutput);
@@ -303,7 +304,7 @@ fn challenge_txin(message: &str) -> TxIn {
     let message = "Proof-of-Reserves: ".to_string() + message;
     let message = sha256d::Hash::hash(message.as_bytes());
     TxIn {
-        previous_output: OutPoint::new(Txid::from_hash(message), 0),
+        previous_output: OutPoint::new(Txid::from_raw_hash(message), 0),
         sequence: Sequence(0xFFFFFFFF),
         ..Default::default()
     }
@@ -313,7 +314,7 @@ fn challenge_txin(message: &str) -> TxIn {
 mod test {
     use super::*;
     use bdk::bitcoin::secp256k1::ecdsa::{SerializedSignature, Signature};
-    use bdk::bitcoin::{EcdsaSighashType, Network, Witness};
+    use bdk::bitcoin::{Network, Witness};
     use bdk::wallet::get_funded_wallet;
     use std::str::FromStr;
 
@@ -506,8 +507,8 @@ mod test {
         let message = "This belongs to me.";
         let mut psbt = get_signed_proof();
 
-        let pkh = PubkeyHash::from_hash(hash160::Hash::hash(&[0, 1, 2, 3]));
-        let out_script_unspendable = Script::new_p2pkh(&pkh);
+        let pkh = PubkeyHash::from_raw_hash(hash160::Hash::hash(&[0, 1, 2, 3]));
+        let out_script_unspendable = ScriptBuf::new_p2pkh(&pkh);
         psbt.unsigned_tx.output[0].script_pubkey = out_script_unspendable;
 
         wallet.verify_proof(&psbt, message, None).unwrap();
