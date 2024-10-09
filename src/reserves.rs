@@ -26,7 +26,7 @@ use bdk::bitcoin::hash_types::{PubkeyHash, Txid};
 use bdk::bitcoin::hashes::{hash160, sha256d, Hash};
 use bdk::bitcoin::psbt::{Input, PartiallySignedTransaction as PSBT};
 use bdk::bitcoin::sighash::EcdsaSighashType;
-use bdk::bitcoin::{Network, Sequence};
+use bdk::bitcoin::Sequence;
 use bdk::database::BatchDatabase;
 use bdk::wallet::tx_builder::TxOrdering;
 use bdk::wallet::Wallet;
@@ -173,7 +173,7 @@ where
             .map(|(utxo, _)| (utxo.outpoint, utxo.txout.clone()))
             .collect();
 
-        verify_proof(psbt, message, outpoints, self.network())
+        verify_proof(psbt, message, outpoints)
     }
 }
 
@@ -188,7 +188,6 @@ pub fn verify_proof(
     psbt: &PSBT,
     message: &str,
     outpoints: Vec<(OutPoint, TxOut)>,
-    _network: Network,
 ) -> Result<u64, ProofError> {
     let tx = psbt.clone().extract_tx();
 
@@ -314,7 +313,7 @@ fn challenge_txin(message: &str) -> TxIn {
 mod test {
     use super::*;
     use bdk::bitcoin::secp256k1::ecdsa::{SerializedSignature, Signature};
-    use bdk::bitcoin::{Network, Witness};
+    use bdk::bitcoin::{Address, Network, Witness};
     use bdk::wallet::get_funded_wallet;
     use std::str::FromStr;
 
@@ -406,7 +405,7 @@ mod test {
             .iter()
             .map(|utxo| (utxo.outpoint, utxo.txout.clone()))
             .collect();
-        let spendable = verify_proof(&psbt, message, outpoints, Network::Testnet).unwrap();
+        let spendable = verify_proof(&psbt, message, outpoints).unwrap();
 
         assert_eq!(spendable, 50_000);
     }
@@ -496,6 +495,39 @@ mod test {
         psbt.inputs[1].sighash_type = Some(EcdsaSighashType::SinglePlusAnyoneCanPay.into());
 
         wallet.verify_proof(&psbt, message, None).unwrap();
+    }
+
+    #[test]
+    fn burner_output() {
+        let psbt = get_signed_proof();
+
+        let pkh = PubkeyHash::from_raw_hash(hash160::Hash::hash(&[0]));
+        let out_script_unspendable = ScriptBuf::new_p2pkh(&pkh);
+        assert_eq!(
+            psbt.unsigned_tx.output[0].script_pubkey,
+            out_script_unspendable
+        );
+
+        let addr_unspendable = Address::new(
+            Network::Bitcoin,
+            bdk::bitcoin::address::Payload::PubkeyHash(pkh),
+        );
+        assert_eq!(
+            addr_unspendable.to_string(),
+            "1FYMZEHnszCHKTBdFZ2DLrUuk3dGwYKQxh"
+        );
+        // https://mempool.space/de/address/1FYMZEHnszCHKTBdFZ2DLrUuk3dGwYKQxh
+        // https://bitcoin.stackexchange.com/questions/65969/invalid-public-key-was-spent-how-was-this-possible
+
+        let addr_unspendable_testnet = Address::new(
+            Network::Testnet,
+            bdk::bitcoin::address::Payload::PubkeyHash(pkh),
+        );
+        assert_eq!(
+            addr_unspendable_testnet.to_string(),
+            "mv4JrHNmh1dY6ZfEy7zbAmhEc3Dyr8ULqX"
+        );
+        // this address can be discovered in the transaction in https://ulrichard.ch/blog/?p=2566
     }
 
     #[test]
