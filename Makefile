@@ -42,7 +42,7 @@ test_63: builder_63
 	rm -f Cargo.lock
 	$(DOCKER_RUN) ${TAG_63} cargo test || true
 	$(DOCKER_RUN) ${TAG_63} cargo update -p home:0.5.9 --precise 0.5.5 || true
-	$(DOCKER_RUN) ${TAG_63} cargo update -p tokio:1.39.3 --precise 1.38.1 || true
+	$(DOCKER_RUN) ${TAG_63} cargo update -p tokio:1.40.0 --precise 1.38.1 || true
 	$(DOCKER_RUN) ${TAG_63} cargo update -p cc --precise 1.0.105 || true
 	$(DOCKER_RUN) ${TAG_63} cargo test
 
