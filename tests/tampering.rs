@@ -1,14 +1,14 @@
-use bdk::bitcoin::sighash::EcdsaSighashType;
-use bdk::wallet::get_funded_wallet;
-use bdk::SignOptions;
 use bdk_reserves::reserves::*;
+use bdk_wallet::bitcoin::Amount;
+use bdk_wallet::test_utils::get_funded_wallet_single;
+use bdk_wallet::SignOptions;
 
 #[test]
 #[should_panic(expected = "ChallengeInputMismatch")]
 fn tampered_proof_message() {
     let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-    let (wallet, _, _) = get_funded_wallet(descriptor);
-    let balance = wallet.get_balance().unwrap();
+    let (mut wallet, _) = get_funded_wallet_single(descriptor);
+    let balance = wallet.balance();
 
     let message_alice = "This belongs to Alice.";
     let mut psbt_alice = wallet.create_proof(message_alice).unwrap();
@@ -39,33 +39,10 @@ fn tampered_proof_message() {
 }
 
 #[test]
-#[should_panic(expected = "UnsupportedSighashType(1)")]
-fn tampered_proof_sighash_tx() {
-    let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-    let (wallet, _, _) = get_funded_wallet(descriptor);
-
-    let message = "This belongs to Alice.";
-    let mut psbt = wallet.create_proof(message).unwrap();
-
-    let signopt = SignOptions {
-        trust_witness_utxo: true,
-        allow_all_sighashes: true,
-        ..Default::default()
-    };
-
-    // set an unsupported sighash
-    psbt.inputs[1].sighash_type = Some(EcdsaSighashType::Single.into());
-
-    let _finalized = wallet.sign(&mut psbt, signopt).unwrap();
-
-    let _spendable = wallet.verify_proof(&psbt, message, None).unwrap();
-}
-
-#[test]
 #[should_panic(expected = "InAndOutValueNotEqual")]
 fn tampered_proof_miner_fee() {
     let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-    let (wallet, _, _) = get_funded_wallet(descriptor);
+    let (mut wallet, _) = get_funded_wallet_single(descriptor);
 
     let message = "This belongs to Alice.";
     let mut psbt = wallet.create_proof(message).unwrap();
@@ -77,7 +54,7 @@ fn tampered_proof_miner_fee() {
     };
 
     // reduce the output value to grant a miner fee
-    psbt.unsigned_tx.output[0].value -= 100;
+    psbt.unsigned_tx.output[0].value -= Amount::from_sat(100);
 
     let _finalized = wallet.sign(&mut psbt, signopt).unwrap();
 

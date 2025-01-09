@@ -1,10 +1,9 @@
-use bdk::blockchain::{electrum::ElectrumBlockchain, Blockchain};
-use bdk::database::memory::MemoryDatabase;
-use bdk::electrum_client::Client;
-use bdk::wallet::{AddressIndex, SyncOptions, Wallet};
-use bdk::SignOptions;
+use bdk_electrum::electrum_client::Client;
+use bdk_electrum::{electrum_client, BdkElectrumClient};
+use bdk_wallet::bitcoin::{Amount, FeeRate};
+use bdk_wallet::{KeychainKind, SignOptions, Wallet};
 use electrsd::bitcoind::bitcoincore_rpc::{
-    bitcoin::{network::constants::Network, Address},
+    bitcoin::{Address, Network},
     RpcApi,
 };
 use electrsd::bitcoind::BitcoinD;
@@ -45,10 +44,10 @@ impl RegTestEnv {
         &self.electrsd.electrum_url
     }
 
-    /// generates some blocks to have some coins to test with
-    pub fn generate(&self, wallets: &[&Wallet<MemoryDatabase>]) {
-        let addr2 = wallets[0].get_address(AddressIndex::Peek(1)).unwrap();
-        let addr1 = wallets[0].get_address(AddressIndex::Peek(0)).unwrap();
+    /// generates a couple of blocks to have some coins to test with
+    pub fn generate(&self, wallets: &mut [&mut Wallet]) {
+        let addr2 = wallets[0].peek_address(KeychainKind::External, 1);
+        let addr1 = wallets[0].peek_address(KeychainKind::External, 0);
         const MY_FOREIGN_ADDR: &str = "mpSFfNURcFTz2yJxBzRY9NhnozxeJ2AUC8";
         let foreign_addr = Address::from_str(MY_FOREIGN_ADDR)
             .unwrap()
@@ -60,13 +59,21 @@ impl RegTestEnv {
         // make the newly mined coins spendable
         self.generate_to_address(100, &foreign_addr);
 
-        let client = Client::new(self.electrum_url()).unwrap();
-        let blockchain = ElectrumBlockchain::from(client);
-        wallets.iter().enumerate().for_each(|(i, wallet)| {
-            wallet.sync(&blockchain, SyncOptions::default()).unwrap();
-            let balance = wallet.get_balance().unwrap();
+        let client: BdkElectrumClient<Client> =
+            BdkElectrumClient::new(electrum_client::Client::new(self.electrum_url()).unwrap());
+
+        const STOP_GAP: usize = 10;
+        const BATCH_SIZE: usize = 5;
+        wallets.iter_mut().enumerate().for_each(|(i, wallet)| {
+            let full_scan_request = wallet.start_full_scan();
+            let update = client
+                .full_scan(full_scan_request, STOP_GAP, BATCH_SIZE, true)
+                .unwrap();
+            wallet.apply_update(update).unwrap();
+
+            let balance = wallet.balance();
             assert!(
-                balance.confirmed == 50_000_000_000,
+                balance.confirmed == Amount::from_int_btc(500),
                 "balance of wallet {} is {} but should be 50_000_000_000",
                 i,
                 balance
@@ -75,24 +82,28 @@ impl RegTestEnv {
 
         let mut builder = wallets[0].build_tx();
         builder
-            .add_recipient(addr1.address.script_pubkey(), 1_000_000)
-            .fee_rate(bdk::FeeRate::from_sat_per_vb(2.0));
-        let (mut psbt, _) = builder.finish().unwrap();
+            .add_recipient(addr1.address.script_pubkey(), Amount::from_sat(1_000_000))
+            .fee_rate(FeeRate::from_sat_per_vb(2).unwrap());
+        let mut psbt = builder.finish().unwrap();
         let signopts = SignOptions {
             ..Default::default()
         };
         let finalized = wallets
-            .iter()
+            .iter_mut()
             .any(|wallet| wallet.sign(&mut psbt, signopts.clone()).unwrap());
         assert!(finalized);
-        blockchain.broadcast(&psbt.extract_tx()).unwrap();
+        client
+            .transaction_broadcast(&psbt.extract_tx().unwrap())
+            .unwrap();
 
         // make the newly moved coins spendable
         self.generate_to_address(6, &foreign_addr);
 
-        wallets
-            .iter()
-            .for_each(|wallet| wallet.sync(&blockchain, SyncOptions::default()).unwrap());
+        wallets.iter_mut().for_each(|wallet| {
+            let sync_req = wallet.start_sync_with_revealed_spks().build();
+            let update = client.sync(sync_req, BATCH_SIZE, true).unwrap();
+            wallet.apply_update(update).unwrap();
+        });
     }
 
     fn generate_to_address(&self, blocks: usize, address: &Address) {

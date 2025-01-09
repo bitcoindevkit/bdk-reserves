@@ -9,6 +9,6 @@
 // You may not use this file except in accordance with one or both of these
 // licenses.
 
-pub extern crate bdk;
+pub extern crate bdk_wallet;
 
 pub mod reserves;

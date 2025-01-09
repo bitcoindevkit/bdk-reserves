@@ -1,40 +1,32 @@
 mod regtestenv;
-use bdk::bitcoin::Network;
-use bdk::blockchain::{electrum::ElectrumBlockchain, Blockchain, GetHeight};
-use bdk::database::memory::MemoryDatabase;
-use bdk::electrum_client::Client;
-use bdk::wallet::{AddressIndex, SyncOptions, Wallet};
-use bdk::Error;
-use bdk::SignOptions;
+use bdk_electrum::electrum_client::{Client, ElectrumApi};
+use bdk_electrum::{electrum_client, BdkElectrumClient};
 use bdk_reserves::reserves::*;
+use bdk_wallet::bitcoin::{Amount, FeeRate, Network};
+use bdk_wallet::{KeychainKind, SignOptions, Wallet};
 use regtestenv::RegTestEnv;
-
-fn construct_wallet(desc: &str, network: Network) -> Result<Wallet<MemoryDatabase>, Error> {
-    let wallet = Wallet::new(desc, None, network, MemoryDatabase::default())?;
-
-    Ok(wallet)
-}
 
 #[test]
 fn unconfirmed() -> Result<(), ProofError> {
-    let wallet = construct_wallet(
-        "wpkh(cTTgG6x13nQjAeECaCaDrjrUdcjReZBGspcmNavsnSRyXq7zXT7r)",
-        Network::Regtest,
-    )?;
+    let mut wallet =
+        Wallet::create_single("wpkh(cTTgG6x13nQjAeECaCaDrjrUdcjReZBGspcmNavsnSRyXq7zXT7r)")
+            .network(Network::Regtest)
+            .create_wallet_no_persist()?;
 
     let regtestenv = RegTestEnv::new();
-    regtestenv.generate(&[&wallet]);
-    let client = Client::new(regtestenv.electrum_url()).unwrap();
-    let blockchain = ElectrumBlockchain::from(client);
-    wallet.sync(&blockchain, SyncOptions::default())?;
+    regtestenv.generate(&mut [&mut wallet]);
 
-    let balance = wallet.get_balance()?;
+    let client: BdkElectrumClient<Client> =
+        BdkElectrumClient::new(electrum_client::Client::new(regtestenv.electrum_url()).unwrap());
+
+    sync(&mut wallet, &client);
+    let balance = wallet.balance();
     assert!(
-        balance.confirmed > 10_000,
+        balance.confirmed > Amount::from_sat(10_000),
         "insufficient balance: {}",
         balance.confirmed
     );
-    let addr = wallet.get_address(AddressIndex::New).unwrap();
+    let addr = wallet.reveal_next_address(KeychainKind::External).address;
     assert_eq!(
         addr.to_string(),
         "bcrt1qexxes4qzr3m6a6mcqrp0d4xexagw08fgy97gss"
@@ -42,19 +34,21 @@ fn unconfirmed() -> Result<(), ProofError> {
 
     let mut builder = wallet.build_tx();
     builder
-        .add_recipient(addr.script_pubkey(), 1_000)
-        .fee_rate(bdk::FeeRate::from_sat_per_vb(2.0));
-    let (mut psbt, _) = builder.finish().unwrap();
+        .add_recipient(addr.script_pubkey(), Amount::from_sat(1_000))
+        .fee_rate(FeeRate::from_sat_per_vb(2).unwrap());
+    let mut psbt = builder.finish().unwrap();
     let signopts = SignOptions {
         trust_witness_utxo: true,
         ..Default::default()
     };
     let finalized = wallet.sign(&mut psbt, signopts.clone())?;
     assert!(finalized);
-    blockchain.broadcast(&psbt.extract_tx())?;
-    wallet.sync(&blockchain, SyncOptions::default())?;
+    client
+        .transaction_broadcast(&psbt.extract_tx().unwrap())
+        .unwrap();
+    sync(&mut wallet, &client);
 
-    let new_balance = wallet.get_balance()?;
+    let new_balance = wallet.balance();
     assert_ne!(balance, new_balance);
 
     let message = "This belongs to me.";
@@ -77,25 +71,26 @@ fn unconfirmed() -> Result<(), ProofError> {
 #[test]
 #[should_panic(expected = "NonSpendableInput")]
 fn confirmed() {
-    let wallet = construct_wallet(
-        "wpkh(cTTgG6x13nQjAeECaCaDrjrUdcjReZBGspcmNavsnSRyXq7zXT7r)",
-        Network::Regtest,
-    )
-    .unwrap();
+    let mut wallet =
+        Wallet::create_single("wpkh(cTTgG6x13nQjAeECaCaDrjrUdcjReZBGspcmNavsnSRyXq7zXT7r)")
+            .network(Network::Regtest)
+            .create_wallet_no_persist()
+            .unwrap();
 
     let regtestenv = RegTestEnv::new();
-    regtestenv.generate(&[&wallet]);
-    let client = Client::new(regtestenv.electrum_url()).unwrap();
-    let blockchain = ElectrumBlockchain::from(client);
-    wallet.sync(&blockchain, SyncOptions::default()).unwrap();
+    regtestenv.generate(&mut [&mut wallet]);
 
-    let balance = wallet.get_balance().unwrap();
+    let client: BdkElectrumClient<Client> =
+        BdkElectrumClient::new(electrum_client::Client::new(regtestenv.electrum_url()).unwrap());
+
+    sync(&mut wallet, &client);
+    let balance = wallet.balance();
     assert!(
-        balance.confirmed > 10_000,
+        balance.confirmed > Amount::from_sat(10_000),
         "insufficient balance: {}",
         balance
     );
-    let addr = wallet.get_address(AddressIndex::New).unwrap();
+    let addr = wallet.reveal_next_address(KeychainKind::External);
     assert_eq!(
         addr.to_string(),
         "bcrt1qexxes4qzr3m6a6mcqrp0d4xexagw08fgy97gss"
@@ -103,19 +98,21 @@ fn confirmed() {
 
     let mut builder = wallet.build_tx();
     builder
-        .add_recipient(addr.script_pubkey(), 1_000)
-        .fee_rate(bdk::FeeRate::from_sat_per_vb(2.0));
-    let (mut psbt, _) = builder.finish().unwrap();
+        .add_recipient(addr.script_pubkey(), Amount::from_sat(1_000))
+        .fee_rate(FeeRate::from_sat_per_vb(2).unwrap());
+    let mut psbt = builder.finish().unwrap();
     let signopts = SignOptions {
         trust_witness_utxo: true,
         ..Default::default()
     };
     let finalized = wallet.sign(&mut psbt, signopts.clone()).unwrap();
     assert!(finalized);
-    blockchain.broadcast(&psbt.extract_tx()).unwrap();
-    wallet.sync(&blockchain, SyncOptions::default()).unwrap();
+    client
+        .transaction_broadcast(&psbt.extract_tx().unwrap())
+        .unwrap();
+    sync(&mut wallet, &client);
 
-    let new_balance = wallet.get_balance().unwrap();
+    let new_balance = wallet.balance();
     assert_ne!(balance, new_balance);
 
     let message = "This belongs to me.";
@@ -123,12 +120,21 @@ fn confirmed() {
     let finalized = wallet.sign(&mut psbt, signopts).unwrap();
     assert!(finalized);
 
-    const CONFIRMATIONS: u32 = 2;
-    let current_height = blockchain.get_height().unwrap();
+    const CONFIRMATIONS: usize = 2;
+    let current_height = client.inner.block_headers_subscribe().unwrap().height;
+    assert_eq!(current_height, 117);
     let max_confirmation_height = current_height - CONFIRMATIONS;
 
     let spendable = wallet
         .verify_proof(&psbt, message, Some(max_confirmation_height))
         .unwrap();
     assert_eq!(spendable, new_balance.confirmed);
+}
+
+fn sync(wallet: &mut Wallet, client: &BdkElectrumClient<Client>) {
+    const BATCH_SIZE: usize = 5;
+
+    let sync_req = wallet.start_sync_with_revealed_spks().build();
+    let update = client.sync(sync_req, BATCH_SIZE, true).unwrap();
+    wallet.apply_update(update).unwrap();
 }

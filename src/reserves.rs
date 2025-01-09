@@ -18,24 +18,25 @@
 //! https://github.com/bitcoin/bips/blob/master/bip-0127.mediawiki
 //! https://github.com/bitcoin/bips/blob/master/bip-0322.mediawiki
 
-use bdk::bitcoin::blockdata::opcodes;
-use bdk::bitcoin::blockdata::script::{Builder, Script, ScriptBuf};
-use bdk::bitcoin::blockdata::transaction::{OutPoint, TxIn, TxOut};
-use bdk::bitcoin::consensus::encode::serialize;
-use bdk::bitcoin::hash_types::{PubkeyHash, Txid};
-use bdk::bitcoin::hashes::{hash160, sha256d, Hash};
-use bdk::bitcoin::psbt::{Input, PartiallySignedTransaction as PSBT};
-use bdk::bitcoin::sighash::EcdsaSighashType;
-use bdk::bitcoin::Sequence;
-use bdk::database::BatchDatabase;
-use bdk::wallet::tx_builder::TxOrdering;
-use bdk::wallet::Wallet;
-use bdk::Error;
+use bdk_wallet::bitcoin::blockdata::opcodes;
+use bdk_wallet::bitcoin::blockdata::script::{Builder, Script, ScriptBuf};
+use bdk_wallet::bitcoin::blockdata::transaction::{OutPoint, TxIn, TxOut};
+use bdk_wallet::bitcoin::consensus::encode::serialize;
+use bdk_wallet::bitcoin::hash_types::Txid;
+use bdk_wallet::bitcoin::hashes::{hash160, sha256d, Hash};
+use bdk_wallet::bitcoin::psbt::ExtractTxError;
+use bdk_wallet::bitcoin::psbt::{Input, Psbt};
+use bdk_wallet::bitcoin::sighash::EcdsaSighashType;
+use bdk_wallet::bitcoin::{Amount, PubkeyHash, Sequence};
+use bdk_wallet::chain::ChainPosition;
+use bdk_wallet::{error::CreateTxError, signer::SignerError};
+use bdk_wallet::{AddForeignUtxoError, TxOrdering, Wallet};
+use units::weight::Weight;
 
 /// The API for proof of reserves
 pub trait ProofOfReserves {
     /// Create a proof for all spendable UTXOs in a wallet
-    fn create_proof(&self, message: &str) -> Result<PSBT, ProofError>;
+    fn create_proof(&mut self, message: &str) -> Result<Psbt, ProofError>;
 
     /// Make sure this is a proof, and not a spendable transaction.
     /// Make sure the proof is valid.
@@ -47,10 +48,10 @@ pub trait ProofOfReserves {
     /// Returns the spendable amount of the proof.
     fn verify_proof(
         &self,
-        psbt: &PSBT,
+        psbt: &Psbt,
         message: &str,
-        max_block_height: Option<u32>,
-    ) -> Result<u64, ProofError>;
+        max_block_height: Option<usize>,
+    ) -> Result<Amount, ProofError>;
 }
 
 /// Proof error
@@ -80,41 +81,60 @@ pub enum ProofError {
     OutpointNotFound(usize),
     /// Failed to retrieve the block height of a Tx or UTXO
     MissingConfirmationInfo,
-    /// A wrapped BDK Error
-    BdkError(Error),
+    /// Error adding foreign UTXO
+    ForeignUtxo(AddForeignUtxoError),
+    /// Failed to create a transaction
+    TxError(CreateTxError),
+    /// Failed to extract TX from a PSBT
+    TxExtraction(ExtractTxError),
+    /// Failed to construct a Wallet
+    Wallet(bdk_wallet::descriptor::error::Error),
+    /// Failed to sign a transaction
+    Sign(SignerError),
 }
 
-impl From<bdk::Error> for ProofError {
-    fn from(error: bdk::Error) -> Self {
-        ProofError::BdkError(error)
+impl From<AddForeignUtxoError> for ProofError {
+    fn from(error: AddForeignUtxoError) -> Self {
+        ProofError::ForeignUtxo(error)
     }
 }
 
-impl From<ProofError> for bdk::Error {
-    fn from(error: ProofError) -> Self {
-        if let ProofError::BdkError(err) = error {
-            err
-        } else {
-            bdk::Error::Generic(format!("{:?}", error))
-        }
+impl From<CreateTxError> for ProofError {
+    fn from(error: CreateTxError) -> Self {
+        ProofError::TxError(error)
     }
 }
 
-impl<D> ProofOfReserves for Wallet<D>
-where
-    D: BatchDatabase,
-{
-    fn create_proof(&self, message: &str) -> Result<PSBT, ProofError> {
+impl From<ExtractTxError> for ProofError {
+    fn from(error: ExtractTxError) -> Self {
+        ProofError::TxExtraction(error)
+    }
+}
+
+impl From<bdk_wallet::descriptor::error::Error> for ProofError {
+    fn from(error: bdk_wallet::descriptor::error::Error) -> Self {
+        ProofError::Wallet(error)
+    }
+}
+
+impl From<SignerError> for ProofError {
+    fn from(error: SignerError) -> Self {
+        ProofError::Sign(error)
+    }
+}
+
+impl ProofOfReserves for Wallet {
+    fn create_proof(&mut self, message: &str) -> Result<Psbt, ProofError> {
         if message.is_empty() {
             return Err(ProofError::ChallengeInputMismatch);
         }
         let challenge_txin = challenge_txin(message);
         let challenge_psbt_inp = Input {
             witness_utxo: Some(TxOut {
-                value: 0,
+                value: Amount::from_sat(0),
                 script_pubkey: Builder::new().push_opcode(opcodes::OP_TRUE).into_script(),
             }),
-            final_script_sig: Some(Script::empty().into()), /* "finalize" the input with an empty scriptSig */
+            final_script_sig: Some(Script::new().into()), /* "finalize" the input with an empty scriptSig */
             ..Default::default()
         };
 
@@ -124,38 +144,42 @@ where
         let mut builder = self.build_tx();
         builder
             .drain_wallet()
-            .add_foreign_utxo(challenge_txin.previous_output, challenge_psbt_inp, 42)?
-            .fee_absolute(0)
+            .add_foreign_utxo(
+                challenge_txin.previous_output,
+                challenge_psbt_inp,
+                Weight::from_wu(42),
+            )?
+            .fee_absolute(Amount::from_sat(0))
             .only_witness_utxo()
             .current_height(0)
             .drain_to(out_script_unspendable)
             .ordering(TxOrdering::Untouched);
-        let (psbt, _details) = builder.finish().map_err(ProofError::BdkError)?;
+        let psbt = builder.finish()?;
 
         Ok(psbt)
     }
 
     fn verify_proof(
         &self,
-        psbt: &PSBT,
+        psbt: &Psbt,
         message: &str,
-        max_block_height: Option<u32>,
-    ) -> Result<u64, ProofError> {
+        max_block_height: Option<usize>,
+    ) -> Result<Amount, ProofError> {
         // verify the proof UTXOs are still spendable
-        let unspents = match self.list_unspent() {
-            Ok(utxos) => utxos,
-            Err(err) => return Err(ProofError::BdkError(err)),
-        };
-        let unspents = unspents
-            .iter()
+        let unspents = self
+            .list_unspent()
             .map(|utxo| {
                 if max_block_height.is_none() {
                     Ok((utxo, None))
                 } else {
-                    let tx_details = self.get_tx(&utxo.outpoint.txid, false)?;
+                    let tx_details = self.get_tx(utxo.outpoint.txid);
                     if let Some(tx_details) = tx_details {
-                        if let Some(conf_time) = tx_details.confirmation_time {
-                            Ok((utxo, Some(conf_time.height)))
+                        if let ChainPosition::<_>::Confirmed {
+                            anchor,
+                            transitively: _,
+                        } = tx_details.chain_position
+                        {
+                            Ok((utxo, Some(anchor.block_id.height as usize)))
                         } else {
                             Ok((utxo, None))
                         }
@@ -168,7 +192,7 @@ where
         let outpoints = unspents
             .iter()
             .filter(|(_utxo, block_height)| {
-                block_height.unwrap_or(u32::MAX) <= max_block_height.unwrap_or(u32::MAX)
+                block_height.unwrap_or(usize::MAX) <= max_block_height.unwrap_or(usize::MAX)
             })
             .map(|(utxo, _)| (utxo.outpoint, utxo.txout.clone()))
             .collect();
@@ -185,11 +209,18 @@ where
 /// Since the caller provides the outpoints, he is also responsible to make sure they have enough confirmations.
 /// Returns the spendable amount of the proof.
 pub fn verify_proof(
-    psbt: &PSBT,
+    psbt: &Psbt,
     message: &str,
     outpoints: Vec<(OutPoint, TxOut)>,
-) -> Result<u64, ProofError> {
-    let tx = psbt.clone().extract_tx();
+) -> Result<Amount, ProofError> {
+    if psbt.inputs.len() != 1 && psbt.unsigned_tx.output.len() != 1 {
+        return Err(ProofError::WrongNumberOfOutputs);
+    }
+    if psbt.unsigned_tx.input.len() <= 1 && psbt.inputs.len() <= 1 {
+        return Err(ProofError::WrongNumberOfInputs);
+    }
+
+    let tx = psbt.clone().extract_tx()?;
 
     if tx.output.len() != 1 {
         return Err(ProofError::WrongNumberOfOutputs);
@@ -241,7 +272,7 @@ pub fn verify_proof(
             if let Some(op) = outpoints.iter().find(|op| op.0 == tx_in.previous_output) {
                 op.1.value
             } else {
-                0
+                Amount::from_sat(0)
             }
         })
         .sum();
@@ -279,7 +310,7 @@ pub fn verify_proof(
                 i,
                 bitcoinconsensus::verify(
                     txout.script_pubkey.to_bytes().as_slice(),
-                    txout.value,
+                    txout.value.to_sat(),
                     &serialized_tx,
                     i,
                 )
@@ -312,33 +343,48 @@ fn challenge_txin(message: &str) -> TxIn {
 #[cfg(test)]
 mod test {
     use super::*;
-    use bdk::bitcoin::secp256k1::ecdsa::{SerializedSignature, Signature};
-    use bdk::bitcoin::{Address, Network, Witness};
-    use bdk::wallet::get_funded_wallet;
+    use bdk_wallet::bitcoin::{Address, Network, Witness};
+    use bdk_wallet::test_utils::get_funded_wallet_single;
+    use bdk_wallet::SignOptions;
     use std::str::FromStr;
 
     #[test]
     fn test_proof() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-        let (wallet, _, _) = get_funded_wallet(descriptor);
+        let (mut wallet, _) = get_funded_wallet_single(descriptor);
 
         let message = "This belongs to me.";
-        let psbt = wallet.create_proof(message).unwrap();
+        let mut psbt = wallet.create_proof(message).unwrap();
 
         let psbt_b64 = psbt.to_string();
 
-        let expected = r#"cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////2johM0znoXIXT1lg+ySrvGrtq1IGXPJzpfi/emkV9iIAAAAAAP////8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qIgYDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+ME7OUmVwAA"#;
+        let expected = r#"cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////MQvsP2eDTCk3vWfQJ50IOFWLwuTHPsnYikR1hosdK0sAAAAAAP3///8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qIgYDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+ME7OUmVwAA"#;
+
+        assert_eq!(psbt_b64, expected);
+
+        let signopts = SignOptions {
+            trust_witness_utxo: true,
+            ..Default::default()
+        };
+        wallet.sign(&mut psbt, signopts).unwrap();
+
+        let spendable = wallet.verify_proof(&psbt, message, None).unwrap();
+        assert_eq!(spendable, Amount::from_sat(50_000));
+
+        let psbt_b64 = psbt.to_string();
+
+        let expected = r#"cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////MQvsP2eDTCk3vWfQJ50IOFWLwuTHPsnYikR1hosdK0sAAAAAAP3///8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qAQhrAkcwRAIgR9XtbnBY0jUe9zXI0kCEzEua5pHm6Bal6mCHNBmTTIECIE2NbjpRjD6/nZv72GQ7qPZ1Sdo3BPps0cBN1DOsB+S+ASEDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+MAAA=="#;
 
         assert_eq!(psbt_b64, expected);
     }
 
     #[test]
     #[should_panic(
-        expected = "Descriptor(Miniscript(Unexpected(\"unexpected «Key too short (<66 char), doesn't match any format»\")))"
+        expected = "\"unexpected «Key too short (<66 char), doesn't match any format»\""
     )]
     fn invalid_descriptor() {
         let descriptor = "wpkh(cVpPVqXRyPcFW)";
-        let (wallet, _, _) = get_funded_wallet(descriptor);
+        let (mut wallet, _) = get_funded_wallet_single(descriptor);
 
         let message = "This belongs to me.";
         let _psbt = wallet.create_proof(message).unwrap();
@@ -348,73 +394,72 @@ mod test {
     #[should_panic(expected = "ChallengeInputMismatch")]
     fn empty_message() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-        let (wallet, _, _) = get_funded_wallet(descriptor);
+        let (mut wallet, _) = get_funded_wallet_single(descriptor);
 
         let message = "";
         let _psbt = wallet.create_proof(message).unwrap();
     }
 
-    fn get_signed_proof() -> PSBT {
-        let psbt = "cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////2johM0znoXIXT1lg+ySrvGrtq1IGXPJzpfi/emkV9iIAAAAAAP////8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qAQcAAQhrAkcwRAIgDSE4PQ57JDiZ7otGkTqz35bi/e1pexYaYKWaveuvRd4CIFzVB4sAmgtdEVz2vHzs1iXc9iRKJ+KQOQb+C2DtPyvzASEDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+MAAA==";
-        PSBT::from_str(psbt).unwrap()
+    fn get_signed_proof() -> Psbt {
+        let psbt = "cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////MQvsP2eDTCk3vWfQJ50IOFWLwuTHPsnYikR1hosdK0sAAAAAAP3///8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qAQhrAkcwRAIgR9XtbnBY0jUe9zXI0kCEzEua5pHm6Bal6mCHNBmTTIECIE2NbjpRjD6/nZv72GQ7qPZ1Sdo3BPps0cBN1DOsB+S+ASEDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+MAAA==";
+        Psbt::from_str(psbt).unwrap()
     }
 
     #[test]
     fn verify_internal() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-        let (wallet, _, _) = get_funded_wallet(descriptor);
+        let (wallet, _) = get_funded_wallet_single(descriptor);
 
         let message = "This belongs to me.";
         let psbt = get_signed_proof();
         let spendable = wallet.verify_proof(&psbt, message, None).unwrap();
-        assert_eq!(spendable, 50_000);
+        assert_eq!(spendable, Amount::from_sat(50_000));
     }
 
     #[test]
     #[should_panic(expected = "NonSpendableInput")]
-    fn verify_internal_90() {
+    fn verify_internal_1990() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-        let (wallet, _, _) = get_funded_wallet(descriptor);
+        let (wallet, _) = get_funded_wallet_single(descriptor);
 
         let message = "This belongs to me.";
         let psbt = get_signed_proof();
-        let spendable = wallet.verify_proof(&psbt, message, Some(90)).unwrap();
-        assert_eq!(spendable, 50_000);
+        let spendable = wallet.verify_proof(&psbt, message, Some(1990)).unwrap();
+        assert_eq!(spendable, Amount::from_sat(0));
     }
 
     #[test]
-    fn verify_internal_100() {
+    fn verify_internal_2000() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-        let (wallet, _, _) = get_funded_wallet(descriptor);
+        let (wallet, _) = get_funded_wallet_single(descriptor);
 
         let message = "This belongs to me.";
         let psbt = get_signed_proof();
-        let spendable = wallet.verify_proof(&psbt, message, Some(100)).unwrap();
-        assert_eq!(spendable, 50_000);
+        let spendable = wallet.verify_proof(&psbt, message, Some(2000)).unwrap();
+        assert_eq!(spendable, Amount::from_sat(50_000));
     }
 
     #[test]
     fn verify_external() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-        let (wallet, _, _) = get_funded_wallet(descriptor);
+        let (wallet, _) = get_funded_wallet_single(descriptor);
 
         let message = "This belongs to me.";
         let psbt = get_signed_proof();
-        let unspents = wallet.list_unspent().unwrap();
-        let outpoints = unspents
-            .iter()
-            .map(|utxo| (utxo.outpoint, utxo.txout.clone()))
+        let outpoints = wallet
+            .list_unspent()
+            .map(|utxo| (utxo.outpoint, utxo.txout))
             .collect();
         let spendable = verify_proof(&psbt, message, outpoints).unwrap();
 
-        assert_eq!(spendable, 50_000);
+        assert_eq!(spendable, Amount::from_sat(50_000));
     }
 
     #[test]
     #[should_panic(expected = "ChallengeInputMismatch")]
     fn wrong_message() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-        let (wallet, _, _) = get_funded_wallet(descriptor);
+        let (wallet, _) = get_funded_wallet_single(descriptor);
 
         let message = "Wrong message!";
         let psbt = get_signed_proof();
@@ -425,7 +470,7 @@ mod test {
     #[should_panic(expected = "WrongNumberOfInputs")]
     fn too_few_inputs() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-        let (wallet, _, _) = get_funded_wallet(descriptor);
+        let (wallet, _) = get_funded_wallet_single(descriptor);
 
         let message = "This belongs to me.";
         let mut psbt = get_signed_proof();
@@ -439,12 +484,12 @@ mod test {
     #[should_panic(expected = "WrongNumberOfOutputs")]
     fn no_output() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-        let (wallet, _, _) = get_funded_wallet(descriptor);
+        let (wallet, _) = get_funded_wallet_single(descriptor);
 
         let message = "This belongs to me.";
         let mut psbt = get_signed_proof();
-        psbt.unsigned_tx.output.clear();
         psbt.inputs.clear();
+        psbt.unsigned_tx.output.clear();
 
         wallet.verify_proof(&psbt, message, None).unwrap();
     }
@@ -453,7 +498,7 @@ mod test {
     #[should_panic(expected = "NotSignedInput")]
     fn missing_signature() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-        let (wallet, _, _) = get_funded_wallet(descriptor);
+        let (wallet, _) = get_funded_wallet_single(descriptor);
 
         let message = "This belongs to me.";
         let mut psbt = get_signed_proof();
@@ -467,17 +512,18 @@ mod test {
     #[should_panic(expected = "SignatureValidation")]
     fn invalid_signature() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-        let (wallet, _, _) = get_funded_wallet(descriptor);
+        let (wallet, _) = get_funded_wallet_single(descriptor);
 
         let message = "This belongs to me.";
         let mut psbt = get_signed_proof();
         psbt.inputs[1].final_script_sig = None;
 
-        let invalid_signature = Signature::from_str("3045022100f3b7b0b1400287766edfe8ba66bc0412984cdb97da6bb4092d5dc63a84e1da6f02204da10796361dbeaeead8f68a23157dffa23b356ec14ec2c0c384ad68d582bb14").unwrap();
-        let invalid_signature = SerializedSignature::from_signature(&invalid_signature);
+        let invalid_signature = bdk_wallet::bitcoin::secp256k1::ecdsa::Signature::from_str("3045022100f3b7b0b1400287766edfe8ba66bc0412984cdb97da6bb4092d5dc63a84e1da6f02204da10796361dbeaeead8f68a23157dffa23b356ec14ec2c0c384ad68d582bb14").unwrap();
+        let invalid_signature =
+            bdk_wallet::bitcoin::ecdsa::Signature::sighash_all(invalid_signature);
 
         let mut invalid_witness = Witness::new();
-        invalid_witness.push_bitcoin_signature(&invalid_signature, EcdsaSighashType::All);
+        invalid_witness.push_ecdsa_signature(&invalid_signature);
 
         psbt.inputs[1].final_script_witness = Some(invalid_witness);
 
@@ -488,7 +534,7 @@ mod test {
     #[should_panic(expected = "UnsupportedSighashType(1)")]
     fn wrong_sighash_type() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-        let (wallet, _, _) = get_funded_wallet(descriptor);
+        let (wallet, _) = get_funded_wallet_single(descriptor);
 
         let message = "This belongs to me.";
         let mut psbt = get_signed_proof();
@@ -508,10 +554,7 @@ mod test {
             out_script_unspendable
         );
 
-        let addr_unspendable = Address::new(
-            Network::Bitcoin,
-            bdk::bitcoin::address::Payload::PubkeyHash(pkh),
-        );
+        let addr_unspendable = Address::p2pkh(pkh, Network::Bitcoin);
         assert_eq!(
             addr_unspendable.to_string(),
             "1FYMZEHnszCHKTBdFZ2DLrUuk3dGwYKQxh"
@@ -519,10 +562,7 @@ mod test {
         // https://mempool.space/de/address/1FYMZEHnszCHKTBdFZ2DLrUuk3dGwYKQxh
         // https://bitcoin.stackexchange.com/questions/65969/invalid-public-key-was-spent-how-was-this-possible
 
-        let addr_unspendable_testnet = Address::new(
-            Network::Testnet,
-            bdk::bitcoin::address::Payload::PubkeyHash(pkh),
-        );
+        let addr_unspendable_testnet = Address::p2pkh(pkh, Network::Testnet);
         assert_eq!(
             addr_unspendable_testnet.to_string(),
             "mv4JrHNmh1dY6ZfEy7zbAmhEc3Dyr8ULqX"
@@ -534,7 +574,7 @@ mod test {
     #[should_panic(expected = "InvalidOutput")]
     fn invalid_output() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-        let (wallet, _, _) = get_funded_wallet(descriptor);
+        let (wallet, _) = get_funded_wallet_single(descriptor);
 
         let message = "This belongs to me.";
         let mut psbt = get_signed_proof();
@@ -550,11 +590,11 @@ mod test {
     #[should_panic(expected = "InAndOutValueNotEqual")]
     fn sum_mismatch() {
         let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-        let (wallet, _, _) = get_funded_wallet(descriptor);
+        let (wallet, _) = get_funded_wallet_single(descriptor);
 
         let message = "This belongs to me.";
         let mut psbt = get_signed_proof();
-        psbt.unsigned_tx.output[0].value = 123;
+        psbt.unsigned_tx.output[0].value = Amount::from_sat(123);
 
         wallet.verify_proof(&psbt, message, None).unwrap();
     }

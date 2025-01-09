@@ -55,9 +55,11 @@ This library should always compile with Rust **1.63.0**.
 To build with the MSRV you will need to pin the below dependencies:
 
 ```shell
-cargo update -p home:0.5.9 --precise 0.5.5
-cargo update -p tokio:1.39.3 --precise 1.38.1
+cargo update -p home:0.5.11 --precise 0.5.5
 cargo update -p cc --precise 1.0.105
+cargo update -p rustls:0.23.21 --precise 0.23.12
+cargo update -p time --precise 0.3.20
+cargo update -p zstd-sys --precise "2.0.7+zstd.1.5.4"
 ```
 
 ## Contribution
