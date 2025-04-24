@@ -1,8 +1,4 @@
-<<<<<<< HEAD
-FROM rust:1.70-bookworm
-=======
 FROM rust:1.81-bookworm
->>>>>>> d2a9c38 (upgrading to match bdk v0.30)
 ARG http_proxy
 ENV http_proxy=$http_proxy
 ENV https_proxy=$http_proxy
