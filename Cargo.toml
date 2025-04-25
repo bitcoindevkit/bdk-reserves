@@ -1,6 +1,6 @@
 [package]
 name = "bdk-reserves"
-version = "1.0.0"
+version = "1.2.0"
 authors = ["Richard Ulrich <richard.ulrich@aminagroup.com>"]
 edition = "2018"
 description = "Proof of reserves for bitcoin dev kit"
@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/bitcoindevkit/bdk-reserves"
 
 [dependencies]
-bdk_wallet = { version = "1.0.0", default-features = false, features = ["std"] }
+bdk_wallet = { version = "1.2.0", default-features = false, features = ["std"] }
 bitcoinconsensus = "0.19.0-3"
 log = "^0.4"
 

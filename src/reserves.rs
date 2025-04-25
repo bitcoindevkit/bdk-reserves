@@ -358,7 +358,7 @@ mod test {
 
         let psbt_b64 = psbt.to_string();
 
-        let expected = r#"cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////MQvsP2eDTCk3vWfQJ50IOFWLwuTHPsnYikR1hosdK0sAAAAAAP3///8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qIgYDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+ME7OUmVwAA"#;
+        let expected = r#"cHNidP8BAH4CAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////MQvsP2eDTCk3vWfQJ50IOFWLwuTHPsnYikR1hosdK0sAAAAAAP3///8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qIgYDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+ME7OUmVwAA"#;
 
         assert_eq!(psbt_b64, expected);
 
@@ -373,15 +373,13 @@ mod test {
 
         let psbt_b64 = psbt.to_string();
 
-        let expected = r#"cHNidP8BAH4BAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////MQvsP2eDTCk3vWfQJ50IOFWLwuTHPsnYikR1hosdK0sAAAAAAP3///8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qAQhrAkcwRAIgR9XtbnBY0jUe9zXI0kCEzEua5pHm6Bal6mCHNBmTTIECIE2NbjpRjD6/nZv72GQ7qPZ1Sdo3BPps0cBN1DOsB+S+ASEDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+MAAA=="#;
+        let expected = r#"cHNidP8BAH4CAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////MQvsP2eDTCk3vWfQJ50IOFWLwuTHPsnYikR1hosdK0sAAAAAAP3///8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qAQhrAkcwRAIgMjk39sEdlh9VEb0GOKNy+C/X4yiZd4/AteVnZjdSuPYCIBQKVpBGTpUSZNoXqT93EucKLLFVQnLJIkPXKjRYO4eJASEDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+MAAA=="#;
 
         assert_eq!(psbt_b64, expected);
     }
 
     #[test]
-    #[should_panic(
-        expected = "\"unexpected «Key too short (<66 char), doesn't match any format»\""
-    )]
+    #[should_panic(expected = "\"Key too short (<66 char), doesn't match any format\"")]
     fn invalid_descriptor() {
         let descriptor = "wpkh(cVpPVqXRyPcFW)";
         let (mut wallet, _) = get_funded_wallet_single(descriptor);

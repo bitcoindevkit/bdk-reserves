@@ -16,11 +16,17 @@ test_current: builder
 test_63: builder_63
 	rm -f Cargo.lock
 	$(DOCKER_RUN) ${TAG_63} cargo test || true
-	$(DOCKER_RUN) ${TAG_63} cargo update -p home:0.5.11 --precise 0.5.5 || true
-	$(DOCKER_RUN) ${TAG_63} cargo update -p cc --precise 1.0.105 || true
-	$(DOCKER_RUN) ${TAG_63} cargo update -p rustls:0.23.21 --precise 0.23.12 || true
-	$(DOCKER_RUN) ${TAG_63} cargo update -p time --precise 0.3.20 || true
-	$(DOCKER_RUN) ${TAG_63} cargo update -p zstd-sys --precise "2.0.7+zstd.1.5.4" || true
+	$(DOCKER_RUN) ${TAG_63} cargo update -p zstd-sys --precise "2.0.8+zstd.1.5.5" || true
+	$(DOCKER_RUN) ${TAG_63} cargo update -p time --precise "0.3.20" || true
+	$(DOCKER_RUN) ${TAG_63} cargo update -p home --precise "0.5.5" || true
+	$(DOCKER_RUN) ${TAG_63} cargo update -p flate2 --precise "1.0.35" || true
+	$(DOCKER_RUN) ${TAG_63} cargo update -p bzip2-sys --precise "0.1.12" || true
+	$(DOCKER_RUN) ${TAG_63} cargo update -p ring --precise "0.17.12" || true
+	$(DOCKER_RUN) ${TAG_63} cargo update -p once_cell --precise "1.20.3" || true
+	$(DOCKER_RUN) ${TAG_63} cargo update -p base64ct --precise "1.6.0" || true
+	$(DOCKER_RUN) ${TAG_63} cargo update -p minreq --precise "2.13.2" || true
+	$(DOCKER_RUN) ${TAG_63} cargo update -p bdk_electrum --precise 0.20.1 || true
+	$(DOCKER_RUN) ${TAG_63} cargo update -p rustls:0.23.26 --precise 0.23.12 || true
 	$(DOCKER_RUN) ${TAG_63} cargo test
 
 run: builder
