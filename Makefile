@@ -26,7 +26,7 @@ test_63: builder_63
 	$(DOCKER_RUN) ${TAG_63} cargo update -p base64ct --precise "1.6.0" || true
 	$(DOCKER_RUN) ${TAG_63} cargo update -p minreq --precise "2.13.2" || true
 	$(DOCKER_RUN) ${TAG_63} cargo update -p bdk_electrum --precise 0.20.1 || true
-	$(DOCKER_RUN) ${TAG_63} cargo update -p rustls:0.23.26 --precise 0.23.12 || true
+	$(DOCKER_RUN) ${TAG_63} cargo update -p rustls:0.23.28 --precise 0.23.12 || true
 	$(DOCKER_RUN) ${TAG_63} cargo test
 
 run: builder

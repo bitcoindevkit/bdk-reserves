@@ -1,4 +1,4 @@
-FROM rust:1.81-bookworm
+FROM rust:1.87-bookworm
 ARG http_proxy
 ENV http_proxy=$http_proxy
 ENV https_proxy=$http_proxy
@@ -35,7 +35,4 @@ WORKDIR /home/satoshi
 
 RUN rustup component add clippy-preview \
  && rustup component add rustfmt
-RUN rustup target add wasm32-unknown-unknown
-RUN rustup target add wasm32-wasi
-RUN rustup target add wasm32-unknown-emscripten
 

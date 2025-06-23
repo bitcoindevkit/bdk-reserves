@@ -34,6 +34,4 @@ WORKDIR /home/satoshi
 
 RUN rustup component add clippy-preview \
  && rustup component add rustfmt
-RUN rustup target add wasm32-unknown-unknown
-RUN rustup target add wasm32-wasi
 

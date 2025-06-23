@@ -86,7 +86,7 @@ pub enum ProofError {
     /// Failed to create a transaction
     TxError(CreateTxError),
     /// Failed to extract TX from a PSBT
-    TxExtraction(ExtractTxError),
+    TxExtraction(Box<ExtractTxError>),
     /// Failed to construct a Wallet
     Wallet(bdk_wallet::descriptor::error::Error),
     /// Failed to sign a transaction
@@ -107,7 +107,7 @@ impl From<CreateTxError> for ProofError {
 
 impl From<ExtractTxError> for ProofError {
     fn from(error: ExtractTxError) -> Self {
-        ProofError::TxExtraction(error)
+        ProofError::TxExtraction(Box::new(error))
     }
 }
 

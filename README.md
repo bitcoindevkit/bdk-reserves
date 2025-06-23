@@ -65,7 +65,7 @@ cargo update -p once_cell --precise "1.20.3"
 cargo update -p base64ct --precise "1.6.0"
 cargo update -p minreq --precise "2.13.2"
 cargo update -p bdk_electrum --precise 0.20.1
-cargo update -p rustls:0.23.26 --precise 0.23.12
+cargo update -p rustls:0.23.28 --precise 0.23.12
 ```
 
 ## Contribution
