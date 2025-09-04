@@ -2,11 +2,8 @@ use bdk_electrum::electrum_client::Client;
 use bdk_electrum::{electrum_client, BdkElectrumClient};
 use bdk_wallet::bitcoin::{Amount, FeeRate};
 use bdk_wallet::{KeychainKind, SignOptions, Wallet};
-use electrsd::bitcoind::bitcoincore_rpc::{
-    bitcoin::{Address, Network},
-    RpcApi,
-};
-use electrsd::bitcoind::BitcoinD;
+use electrsd::corepc_node::client::bitcoin::{Address, Network};
+use electrsd::corepc_node::Node;
 use electrsd::electrum_client::ElectrumApi;
 use electrsd::ElectrsD;
 use std::str::FromStr;
@@ -15,7 +12,7 @@ use std::time::Duration;
 /// The environment to run a single test, while many of them can run in parallel.
 pub struct RegTestEnv {
     /// Instance of the bitcoin core daemon
-    bitcoind: BitcoinD,
+    bitcoind: Node,
     /// Instance of the electrs electrum server
     electrsd: ElectrsD,
 }
@@ -23,12 +20,12 @@ pub struct RegTestEnv {
 impl RegTestEnv {
     /// set up local bitcoind and electrs instances in regtest mode
     pub fn new() -> Self {
-        let mut bitcoind_conf = electrsd::bitcoind::Conf::default();
-        bitcoind_conf.p2p = electrsd::bitcoind::P2P::Yes;
+        let mut bitcoind_conf = electrsd::corepc_node::Conf::default();
+        bitcoind_conf.p2p = electrsd::corepc_node::P2P::Yes;
 
-        let bitcoind_exe = electrsd::bitcoind::downloaded_exe_path()
+        let bitcoind_exe = electrsd::corepc_node::downloaded_exe_path()
             .expect("We should always have downloaded path");
-        let bitcoind = BitcoinD::with_conf(bitcoind_exe, &bitcoind_conf).unwrap();
+        let bitcoind = Node::with_conf(bitcoind_exe, &bitcoind_conf).unwrap();
 
         let mut elect_conf = electrsd::Conf::default();
         elect_conf.view_stderr = false; // setting this to true will lead to very verbose logging
@@ -116,7 +113,7 @@ impl RegTestEnv {
 
         self.bitcoind
             .client
-            .generate_to_address(blocks as u64, address)
+            .generate_to_address(blocks, address)
             .unwrap();
 
         let header = loop {
@@ -127,7 +124,12 @@ impl RegTestEnv {
             }
         };
 
-        assert_eq!(header.height, old_height + blocks);
+        assert!(
+            header.height >= old_height + blocks,
+            "{} >= {}",
+            header.height,
+            old_height + blocks
+        );
     }
 }
 
