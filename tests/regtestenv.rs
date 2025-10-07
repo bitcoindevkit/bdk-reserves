@@ -1,11 +1,13 @@
 use bdk_electrum::electrum_client::Client;
 use bdk_electrum::{electrum_client, BdkElectrumClient};
+use bdk_tx::Signer;
 use bdk_wallet::bitcoin::{Amount, FeeRate};
-use bdk_wallet::{KeychainKind, SignOptions, Wallet};
+use bdk_wallet::{KeychainKind, Wallet};
 use electrsd::corepc_node::client::bitcoin::{Address, Network};
 use electrsd::corepc_node::Node;
 use electrsd::electrum_client::ElectrumApi;
 use electrsd::ElectrsD;
+use secp256k1::Secp256k1;
 use std::str::FromStr;
 use std::time::Duration;
 
@@ -42,7 +44,8 @@ impl RegTestEnv {
     }
 
     /// generates a couple of blocks to have some coins to test with
-    pub fn generate(&self, wallets: &mut [&mut Wallet]) {
+    pub fn generate(&self, wallets: &mut [&mut Wallet], signers: &[&Signer]) {
+        assert_eq!(wallets.len(), signers.len());
         let addr2 = wallets[0].peek_address(KeychainKind::External, 1);
         let addr1 = wallets[0].peek_address(KeychainKind::External, 0);
         const MY_FOREIGN_ADDR: &str = "mpSFfNURcFTz2yJxBzRY9NhnozxeJ2AUC8";
@@ -77,18 +80,15 @@ impl RegTestEnv {
             );
         });
 
+        let secp = Secp256k1::new();
         let mut builder = wallets[0].build_tx();
         builder
             .add_recipient(addr1.address.script_pubkey(), Amount::from_sat(1_000_000))
             .fee_rate(FeeRate::from_sat_per_vb(2).unwrap());
         let mut psbt = builder.finish().unwrap();
-        let signopts = SignOptions {
-            ..Default::default()
-        };
-        let finalized = wallets
-            .iter_mut()
-            .any(|wallet| wallet.sign(&mut psbt, signopts.clone()).unwrap());
-        assert!(finalized);
+        signers.iter().for_each(|signer| {
+            psbt.sign(*signer, &secp).unwrap();
+        });
         client
             .transaction_broadcast(&psbt.extract_tx().unwrap())
             .unwrap();

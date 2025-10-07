@@ -1,8 +1,10 @@
 use bdk_reserves::reserves::*;
+use bdk_tx::Signer;
 use bdk_wallet::bitcoin::psbt::Psbt;
+use bdk_wallet::descriptor::Descriptor;
 use bdk_wallet::test_utils::get_funded_wallet_single;
-use bdk_wallet::SignOptions;
 use rstest::rstest;
+use secp256k1::Secp256k1;
 
 #[rstest]
 #[case("wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)")]
@@ -11,6 +13,10 @@ use rstest::rstest;
 fn test_proof_singlesig(#[case] descriptor: &'static str) -> Result<(), ProofError> {
     let (mut wallet, _) = get_funded_wallet_single(descriptor);
     let balance = wallet.balance();
+
+    let secp = Secp256k1::new();
+    let (_, keymap) = Descriptor::parse_descriptor(&secp, descriptor).unwrap();
+    let signer = Signer(keymap.into_iter().collect());
 
     let message = "This belongs to me.";
     let mut psbt = wallet.create_proof(message)?;
@@ -21,14 +27,7 @@ fn test_proof_singlesig(#[case] descriptor: &'static str) -> Result<(), ProofErr
         num_inp
     );
 
-    let finalized = wallet.sign(
-        &mut psbt,
-        SignOptions {
-            trust_witness_utxo: true,
-            //remove_partial_sigs: false,
-            ..Default::default()
-        },
-    )?;
+    psbt.sign(&signer, &secp).unwrap();
 
     // returns a tuple with the counts of (partial_sigs, final_script_sig, final_script_witness)
     let count_signatures = |psbt: &Psbt| {
@@ -41,7 +40,6 @@ fn test_proof_singlesig(#[case] descriptor: &'static str) -> Result<(), ProofErr
         })
     };
     assert_eq!(count_signatures(&psbt), (0, 1, 1));
-    assert!(finalized);
 
     let spendable = wallet.verify_proof(&psbt, message, None)?;
     assert_eq!(spendable, balance.confirmed);

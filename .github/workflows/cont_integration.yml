@@ -10,8 +10,8 @@ jobs:
     strategy:
       matrix:
         rust:
-          - 1.89.0 # current
-          - 1.75.0 # MSRV
+          - 1.90.0 # current
+          - 1.85.0 # MSRV
     steps:
       - name: checkout
         uses: actions/checkout@v4
@@ -36,10 +36,6 @@ jobs:
       - name: Update Cargo.lock
         run: cargo update
       - name: Pin dependencies for MSRV
-        if: matrix.rust == '1.75.0'
-        run: |
-          cargo update -p home --precise "0.5.9"
-          cargo update -p minreq --precise "2.13.2"
       - name: Build
         run: cargo build
       - name: Clippy

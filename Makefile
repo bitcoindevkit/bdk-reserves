@@ -7,13 +7,13 @@ DOCKER_RUN := docker run --interactive --rm \
 build: builder
 	$(DOCKER_RUN) --tty ${TAG} cargo build
 
-test: test_current test_75
+test: test_current test_85
 
 test_current: builder
 	rm -f Cargo.lock
 	$(DOCKER_RUN) ${TAG} cargo test
 
-test_75: builder_75
+test_85: builder_85
 	rm -f Cargo.lock
 	$(DOCKER_RUN) ${TAG_75} cargo test || true
 	$(DOCKER_RUN) ${TAG_75} cargo update -p home --precise "0.5.9" || true

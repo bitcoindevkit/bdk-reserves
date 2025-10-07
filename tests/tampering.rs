@@ -1,7 +1,9 @@
 use bdk_reserves::reserves::*;
+use bdk_tx::Signer;
 use bdk_wallet::bitcoin::Amount;
+use bdk_wallet::descriptor::Descriptor;
 use bdk_wallet::test_utils::get_funded_wallet_single;
-use bdk_wallet::SignOptions;
+use secp256k1::Secp256k1;
 
 #[test]
 #[should_panic(expected = "ChallengeInputMismatch")]
@@ -13,11 +15,10 @@ fn tampered_proof_message() {
     let message_alice = "This belongs to Alice.";
     let mut psbt_alice = wallet.create_proof(message_alice).unwrap();
 
-    let signopt = SignOptions {
-        trust_witness_utxo: true,
-        ..Default::default()
-    };
-    let _finalized = wallet.sign(&mut psbt_alice, signopt).unwrap();
+    let secp = Secp256k1::new();
+    let (_, keymap) = Descriptor::parse_descriptor(&secp, descriptor).unwrap();
+    let signer = Signer(keymap.into_iter().collect());
+    psbt_alice.sign(&signer, &secp).unwrap();
 
     let spendable = wallet
         .verify_proof(&psbt_alice, message_alice, None)
@@ -47,16 +48,13 @@ fn tampered_proof_miner_fee() {
     let message = "This belongs to Alice.";
     let mut psbt = wallet.create_proof(message).unwrap();
 
-    let signopt = SignOptions {
-        trust_witness_utxo: true,
-        allow_all_sighashes: true,
-        ..Default::default()
-    };
-
     // reduce the output value to grant a miner fee
     psbt.unsigned_tx.output[0].value -= Amount::from_sat(100);
 
-    let _finalized = wallet.sign(&mut psbt, signopt).unwrap();
+    let secp = Secp256k1::new();
+    let (_, keymap) = Descriptor::parse_descriptor(&secp, descriptor).unwrap();
+    let signer = Signer(keymap.into_iter().collect());
+    psbt.sign(&signer, &secp).unwrap();
 
     let _spendable = wallet.verify_proof(&psbt, message, None).unwrap();
 }

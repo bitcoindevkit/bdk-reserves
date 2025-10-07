@@ -50,14 +50,8 @@ at your option.
 
 ## Minimum Supported Rust Version (MSRV)
 
-This library should always compile with Rust **1.75.0**.
+This library should always compile with Rust **1.85.0**.
 
-To build with the MSRV you will need to pin the below dependencies:
-
-```shell
-cargo update -p home --precise "0.5.9"
-cargo update -p minreq --precise "2.13.2"
-```
 
 ## Contribution
 

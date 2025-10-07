@@ -29,7 +29,7 @@ use bdk_wallet::bitcoin::psbt::{Input, Psbt};
 use bdk_wallet::bitcoin::sighash::EcdsaSighashType;
 use bdk_wallet::bitcoin::{Amount, PubkeyHash, Sequence};
 use bdk_wallet::chain::ChainPosition;
-use bdk_wallet::{error::CreateTxError, signer::SignerError};
+use bdk_wallet::error::CreateTxError;
 use bdk_wallet::{AddForeignUtxoError, TxOrdering, Wallet};
 use units::weight::Weight;
 
@@ -89,8 +89,6 @@ pub enum ProofError {
     TxExtraction(Box<ExtractTxError>),
     /// Failed to construct a Wallet
     Wallet(bdk_wallet::descriptor::error::Error),
-    /// Failed to sign a transaction
-    Sign(SignerError),
 }
 
 impl From<AddForeignUtxoError> for ProofError {
@@ -114,12 +112,6 @@ impl From<ExtractTxError> for ProofError {
 impl From<bdk_wallet::descriptor::error::Error> for ProofError {
     fn from(error: bdk_wallet::descriptor::error::Error) -> Self {
         ProofError::Wallet(error)
-    }
-}
-
-impl From<SignerError> for ProofError {
-    fn from(error: SignerError) -> Self {
-        ProofError::Sign(error)
     }
 }
 
@@ -343,9 +335,11 @@ fn challenge_txin(message: &str) -> TxIn {
 #[cfg(test)]
 mod test {
     use super::*;
+    use bdk_tx::Signer;
     use bdk_wallet::bitcoin::{Address, Network, Witness};
+    use bdk_wallet::descriptor::Descriptor;
     use bdk_wallet::test_utils::get_funded_wallet_single;
-    use bdk_wallet::SignOptions;
+    use secp256k1::Secp256k1;
     use std::str::FromStr;
 
     #[test]
@@ -362,11 +356,10 @@ mod test {
 
         assert_eq!(psbt_b64, expected);
 
-        let signopts = SignOptions {
-            trust_witness_utxo: true,
-            ..Default::default()
-        };
-        wallet.sign(&mut psbt, signopts).unwrap();
+        let secp = Secp256k1::new();
+        let (_, keymap) = Descriptor::parse_descriptor(&secp, descriptor).unwrap();
+        let signer = Signer(keymap.into_iter().collect());
+        psbt.sign(&signer, &secp).unwrap();
 
         let spendable = wallet.verify_proof(&psbt, message, None).unwrap();
         assert_eq!(spendable, Amount::from_sat(50_000));
