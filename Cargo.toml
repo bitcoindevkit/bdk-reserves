@@ -2,7 +2,7 @@
 name = "bdk-reserves"
 version = "2.2.0"
 authors = ["Richard Ulrich <richard.ulrich@aminagroup.com>"]
-edition = "2018"
+edition = "2024"
 description = "Proof of reserves for bitcoin dev kit"
 keywords = ["proof", "reserves", "bitcoin", "psbt"]
 readme = "README.md"
@@ -11,6 +11,7 @@ repository = "https://github.com/bitcoindevkit/bdk-reserves"
 
 [dependencies]
 bdk_wallet = { version = "2.2.0", default-features = false, features = ["std"] }
+bdk_coin_select = "0.4"
 bitcoinconsensus = "0.19.0-3"
 log = "^0.4"
 

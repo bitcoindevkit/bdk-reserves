@@ -1,6 +1,6 @@
 mod regtestenv;
 use bdk_electrum::electrum_client::{Client, ElectrumApi};
-use bdk_electrum::{electrum_client, BdkElectrumClient};
+use bdk_electrum::{BdkElectrumClient, electrum_client};
 use bdk_reserves::reserves::*;
 use bdk_tx::Signer;
 use bdk_wallet::bitcoin::{Amount, FeeRate, Network};

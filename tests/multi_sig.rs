@@ -1,9 +1,13 @@
 mod regtestenv;
 use bdk_reserves::reserves::*;
+use bdk_tx::Signer;
+use bdk_wallet::bitcoin::Network;
 use bdk_wallet::bitcoin::key::{PrivateKey, PublicKey};
 use bdk_wallet::bitcoin::psbt::Psbt;
 use bdk_wallet::bitcoin::secp256k1::Secp256k1;
-use bdk_wallet::bitcoin::Network;
+use bdk_wallet::descriptor::DescriptorPublicKey;
+use bdk_wallet::keys::{SinglePriv, SinglePub, SinglePubKey};
+use bdk_wallet::miniscript::descriptor::{DescriptorSecretKey, KeyMap};
 use bdk_wallet::{KeychainKind, Wallet};
 use regtestenv::RegTestEnv;
 use rstest::rstest;
@@ -79,6 +83,10 @@ fn test_proof_multisig(
     let mut wallet1 = construct_multisig_wallet(&signer2, &pubkeys, &script_type)?;
     let mut wallet2 = construct_multisig_wallet(&signer3, &pubkeys, &script_type)?;
     let mut wallets = [&mut wallet0, &mut wallet1, &mut wallet2];
+    let signer1 = signer_from_priv(signer1, pubkeys[0]);
+    let signer2 = signer_from_priv(signer2, pubkeys[1]);
+    let signer3 = signer_from_priv(signer3, pubkeys[2]);
+    let signers = [&signer1, &signer2, &signer3];
 
     wallets
         .iter_mut()
@@ -98,8 +106,7 @@ fn test_proof_multisig(
         });
 
     let regtestenv = RegTestEnv::new();
-    /*
-    regtestenv.generate(&mut wallets);
+    regtestenv.generate(&mut wallets, &signers);
 
     wallets.iter().enumerate().for_each(|(i, wallet)| {
         let balance = wallet.balance();
@@ -131,31 +138,28 @@ fn test_proof_multisig(
         })
     };
 
-    let signopts = SignOptions {
+    psbt.sign(signers[0], &secp).unwrap();
+    assert_eq!(count_signatures(&psbt), (num_inp - 1, 1, 0));
+
+    psbt.sign(signers[1], &secp).unwrap();
+    assert_eq!(
+        count_signatures(&psbt),
+        (0, num_inp.pow(count_mult.0), (num_inp - 1) * count_mult.1)
+    );
+
+    // 2 signatures are enough. Just checking what happens...
+    psbt.sign(signers[2], &secp).unwrap();
+    assert_eq!(
+        count_signatures(&psbt),
+        (0, num_inp.pow(count_mult.0), (num_inp - 1) * count_mult.1)
+    );
+
+    let signopts = bdk_wallet::SignOptions {
         trust_witness_utxo: true,
         //remove_partial_sigs: false,
         ..Default::default()
     };
-    let finalized = wallets[0].sign(&mut psbt, signopts.clone())?;
-    assert_eq!(count_signatures(&psbt), (num_inp - 1, 1, 0));
-    assert!(!finalized);
-
-    let finalized = wallets[1].sign(&mut psbt, signopts.clone())?;
-    assert_eq!(
-        count_signatures(&psbt),
-        (0, num_inp.pow(count_mult.0), (num_inp - 1) * count_mult.1)
-    );
-    assert!(finalized);
-
-    // 2 signatures are enough. Just checking what happens...
-    let finalized = wallets[2].sign(&mut psbt, signopts.clone())?;
-    assert_eq!(
-        count_signatures(&psbt),
-        (0, num_inp.pow(count_mult.0), (num_inp - 1) * count_mult.1)
-    );
-    assert!(finalized);
-
-    let finalized = wallets[0].finalize_psbt(&mut psbt, signopts)?;
+    let finalized = wallets[0].finalize_psbt(&mut psbt, signopts).unwrap();
     assert_eq!(
         count_signatures(&psbt),
         (0, num_inp.pow(count_mult.0), (num_inp - 1) * count_mult.1)
@@ -170,7 +174,23 @@ fn test_proof_multisig(
         spendable,
         balance.confirmed,
     );
-    */
 
     Ok(())
+}
+
+fn signer_from_priv(prvk: PrivateKey, pubk: PublicKey) -> Signer {
+    let mut keymap = KeyMap::new();
+
+    let pubk = DescriptorPublicKey::Single(SinglePub {
+        origin: None,
+        key: SinglePubKey::FullKey(pubk),
+    });
+    let prvk = DescriptorSecretKey::Single(SinglePriv {
+        //let prvk = KeyMap::V::Single(SinglePriv {
+        origin: None,
+        key: prvk,
+    });
+    keymap.insert(pubk, prvk);
+
+    Signer(keymap)
 }

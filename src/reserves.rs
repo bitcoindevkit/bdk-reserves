@@ -23,7 +23,7 @@ use bdk_wallet::bitcoin::blockdata::script::{Builder, Script, ScriptBuf};
 use bdk_wallet::bitcoin::blockdata::transaction::{OutPoint, TxIn, TxOut};
 use bdk_wallet::bitcoin::consensus::encode::serialize;
 use bdk_wallet::bitcoin::hash_types::Txid;
-use bdk_wallet::bitcoin::hashes::{hash160, sha256d, Hash};
+use bdk_wallet::bitcoin::hashes::{Hash, hash160, sha256d};
 use bdk_wallet::bitcoin::psbt::ExtractTxError;
 use bdk_wallet::bitcoin::psbt::{Input, Psbt};
 use bdk_wallet::bitcoin::sighash::EcdsaSighashType;
@@ -335,12 +335,22 @@ fn challenge_txin(message: &str) -> TxIn {
 #[cfg(test)]
 mod test {
     use super::*;
+    use bdk_coin_select::{Candidate, NoBnbSolution, metrics::LowestFee};
     use bdk_tx::Signer;
-    use bdk_wallet::bitcoin::{Address, Network, Witness};
+    use bdk_tx::{
+        ChangePolicyType, Output, PsbtParams, ScriptSource, Selector, SelectorParams,
+        filter_unspendable_now, group_by_spk, selection_algorithm_lowest_fee_bnb,
+    };
+    use bdk_wallet::bitcoin::{Address, FeeRate, Network, Witness};
     use bdk_wallet::descriptor::Descriptor;
     use bdk_wallet::test_utils::get_funded_wallet_single;
     use secp256k1::Secp256k1;
     use std::str::FromStr;
+
+    /// Select all UTXOs
+    pub fn selection_algorithm_leave() -> impl FnMut(&mut Selector) -> Result<(), NoBnbSolution> {
+        move |_selector| Ok(())
+    }
 
     #[test]
     fn test_proof() {
@@ -357,9 +367,40 @@ mod test {
         assert_eq!(psbt_b64, expected);
 
         let secp = Secp256k1::new();
-        let (_, keymap) = Descriptor::parse_descriptor(&secp, descriptor).unwrap();
+        let (desc, keymap) = Descriptor::parse_descriptor(&secp, descriptor).unwrap();
         let signer = Signer(keymap.into_iter().collect());
         psbt.sign(&signer, &secp).unwrap();
+
+        /*
+        let selection = wallet
+            .all_candidates()
+            //.regroup(group_by_spk())
+            //.filter(filter_unspendable_now(tip_height, tip_time))
+            .into_selection(
+                selection_algorithm_leave(),
+                SelectorParams::new(
+                    FeeRate::from_sat_per_vb_unchecked(10),
+                    vec![],
+                    ScriptSource::from_descriptor(desc),
+                    ChangePolicyType::NoDust,
+                    wallet.change_weight(),
+                ),
+            )?;
+        let finalizer = selection.into_finalizer();
+        assert!(
+            finalizer.finalize(&mut psbt).is_finalized(),
+            "must finalize"
+        );
+        */
+
+
+        let signopts = bdk_wallet::SignOptions {
+            trust_witness_utxo: true,
+            //remove_partial_sigs: false,
+            ..Default::default()
+        };
+        let finalized = wallet.finalize_psbt(&mut psbt, signopts).unwrap();
+
 
         let spendable = wallet.verify_proof(&psbt, message, None).unwrap();
         assert_eq!(spendable, Amount::from_sat(50_000));

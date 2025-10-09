@@ -1,12 +1,12 @@
 use bdk_electrum::electrum_client::Client;
-use bdk_electrum::{electrum_client, BdkElectrumClient};
+use bdk_electrum::{BdkElectrumClient, electrum_client};
 use bdk_tx::Signer;
 use bdk_wallet::bitcoin::{Amount, FeeRate};
 use bdk_wallet::{KeychainKind, Wallet};
-use electrsd::corepc_node::client::bitcoin::{Address, Network};
-use electrsd::corepc_node::Node;
-use electrsd::electrum_client::ElectrumApi;
 use electrsd::ElectrsD;
+use electrsd::corepc_node::Node;
+use electrsd::corepc_node::client::bitcoin::{Address, Network};
+use electrsd::electrum_client::ElectrumApi;
 use secp256k1::Secp256k1;
 use std::str::FromStr;
 use std::time::Duration;
