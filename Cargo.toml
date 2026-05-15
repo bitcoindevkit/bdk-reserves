@@ -1,8 +1,8 @@
 [package]
 name = "bdk-reserves"
-version = "2.1.0"
+version = "3.0.0"
 authors = ["Richard Ulrich <richard.ulrich@aminagroup.com>"]
-edition = "2018"
+edition = "2024"
 description = "Proof of reserves for bitcoin dev kit"
 keywords = ["proof", "reserves", "bitcoin", "psbt"]
 readme = "README.md"
@@ -10,15 +10,15 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/bitcoindevkit/bdk-reserves"
 
 [dependencies]
-bdk_wallet = { version = "2.1.0", default-features = false, features = ["std"] }
-bitcoinconsensus = "0.19.0-3"
+bdk_wallet = { version = "3.0", default-features = false, features = ["std"] }
+bitcoinconsensus = "0.105"
 log = "^0.4"
 
 # same version as in rust-bitcoin - I couldn't find a re-export
-units = { package = "bitcoin-units", version = "0.1.0", default-features = false, features = ["alloc"] }
+units = { package = "bitcoin-units", version = "0.1", default-features = false, features = ["alloc"] }
 
 [dev-dependencies]
 rstest = "^0.11"
-bdk_wallet = { version = "2.1.0", default-features = true, features = ["test-utils"] }
-bdk_electrum = "0.23.1"
-electrsd = { version = "0.34", features = ["corepc-node_28_0", "electrs_0_10_6"] }
+bdk_wallet = { version = "3.0", default-features = true, features = ["test-utils"] }
+bdk_electrum = "0.24"
+electrsd = { version = "0.39", features = ["download", "bitcoind_download", "bitcoind_29_0", "electrs_0_10_6"] }

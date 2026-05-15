@@ -1,7 +1,7 @@
 use bdk_reserves::reserves::*;
+use bdk_wallet::SignOptions;
 use bdk_wallet::bitcoin::psbt::Psbt;
 use bdk_wallet::test_utils::get_funded_wallet_single;
-use bdk_wallet::SignOptions;
 use rstest::rstest;
 
 #[rstest]

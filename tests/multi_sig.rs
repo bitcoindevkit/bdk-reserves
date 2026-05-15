@@ -1,9 +1,9 @@
 mod regtestenv;
 use bdk_reserves::reserves::*;
+use bdk_wallet::bitcoin::Network;
 use bdk_wallet::bitcoin::key::{PrivateKey, PublicKey};
 use bdk_wallet::bitcoin::psbt::Psbt;
 use bdk_wallet::bitcoin::secp256k1::Secp256k1;
-use bdk_wallet::bitcoin::Network;
 use bdk_wallet::{KeychainKind, SignOptions, Wallet};
 use regtestenv::RegTestEnv;
 use rstest::rstest;

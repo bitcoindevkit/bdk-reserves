@@ -1,4 +1,4 @@
-FROM rust:1.89-trixie
+FROM rust:1.94-trixie
 ARG http_proxy
 ENV http_proxy=$http_proxy
 ENV https_proxy=$http_proxy

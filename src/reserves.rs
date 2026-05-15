@@ -23,14 +23,14 @@ use bdk_wallet::bitcoin::blockdata::script::{Builder, Script, ScriptBuf};
 use bdk_wallet::bitcoin::blockdata::transaction::{OutPoint, TxIn, TxOut};
 use bdk_wallet::bitcoin::consensus::encode::serialize;
 use bdk_wallet::bitcoin::hash_types::Txid;
-use bdk_wallet::bitcoin::hashes::{hash160, sha256d, Hash};
+use bdk_wallet::bitcoin::hashes::{Hash, hash160, sha256d};
 use bdk_wallet::bitcoin::psbt::ExtractTxError;
 use bdk_wallet::bitcoin::psbt::{Input, Psbt};
 use bdk_wallet::bitcoin::sighash::EcdsaSighashType;
 use bdk_wallet::bitcoin::{Amount, PubkeyHash, Sequence};
 use bdk_wallet::chain::ChainPosition;
-use bdk_wallet::{error::CreateTxError, signer::SignerError};
 use bdk_wallet::{AddForeignUtxoError, TxOrdering, Wallet};
+use bdk_wallet::{error::CreateTxError, signer::SignerError};
 use units::weight::Weight;
 
 /// The API for proof of reserves
@@ -213,10 +213,10 @@ pub fn verify_proof(
     message: &str,
     outpoints: Vec<(OutPoint, TxOut)>,
 ) -> Result<Amount, ProofError> {
-    if psbt.inputs.len() != 1 && psbt.unsigned_tx.output.len() != 1 {
+    if psbt.outputs.len() != 1 || psbt.unsigned_tx.output.len() != 1 {
         return Err(ProofError::WrongNumberOfOutputs);
     }
-    if psbt.unsigned_tx.input.len() <= 1 && psbt.inputs.len() <= 1 {
+    if psbt.inputs.len() <= 1 || psbt.unsigned_tx.input.len() <= 1 {
         return Err(ProofError::WrongNumberOfInputs);
     }
 
@@ -343,9 +343,9 @@ fn challenge_txin(message: &str) -> TxIn {
 #[cfg(test)]
 mod test {
     use super::*;
+    use bdk_wallet::SignOptions;
     use bdk_wallet::bitcoin::{Address, Network, Witness};
     use bdk_wallet::test_utils::get_funded_wallet_single;
-    use bdk_wallet::SignOptions;
     use std::str::FromStr;
 
     #[test]
