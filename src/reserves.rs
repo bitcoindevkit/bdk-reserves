@@ -312,6 +312,7 @@ pub fn verify_proof(
                     txout.script_pubkey.to_bytes().as_slice(),
                     txout.value.to_sat(),
                     &serialized_tx,
+                    None,
                     i,
                 )
                 .map_err(|e| ProofError::SignatureValidation(i, format!("{:?}", e))),
