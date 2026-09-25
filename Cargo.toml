@@ -1,6 +1,6 @@
 [package]
 name = "bdk-reserves"
-version = "3.1.0"
+version = "3.1.1"
 authors = ["Richard Ulrich <richard.ulrich@aminagroup.com>"]
 edition = "2024"
 description = "Proof of reserves for bitcoin dev kit"
