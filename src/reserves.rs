@@ -382,6 +382,7 @@ mod test {
             trust_witness_utxo: true,
             ..Default::default()
         };
+        #[allow(deprecated)]
         wallet.sign(&mut psbt, signopts).unwrap();
 
         let spendable = wallet.verify_proof(&psbt, message, None).unwrap();
@@ -632,6 +633,7 @@ mod test {
             trust_witness_utxo: true,
             ..Default::default()
         };
+        #[allow(deprecated)]
         wallet.sign(&mut psbt, signopts).unwrap();
 
         let spendable = wallet.verify_proof(&psbt, message, None).unwrap();
