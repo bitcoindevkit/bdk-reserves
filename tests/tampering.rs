@@ -17,6 +17,7 @@ fn tampered_proof_message() {
         trust_witness_utxo: true,
         ..Default::default()
     };
+    #[allow(deprecated)]
     let _finalized = wallet.sign(&mut psbt_alice, signopt).unwrap();
 
     let spendable = wallet
@@ -56,6 +57,7 @@ fn tampered_proof_miner_fee() {
     // reduce the output value to grant a miner fee
     psbt.unsigned_tx.output[0].value -= Amount::from_sat(100);
 
+    #[allow(deprecated)]
     let _finalized = wallet.sign(&mut psbt, signopt).unwrap();
 
     let _spendable = wallet.verify_proof(&psbt, message, None).unwrap();
