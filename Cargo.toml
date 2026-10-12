@@ -1,6 +1,6 @@
 [package]
 name = "bdk-reserves"
-version = "3.2.0"
+version = "3.2.1"
 authors = ["Richard Ulrich <richard.ulrich@aminagroup.com>"]
 edition = "2024"
 description = "Proof of reserves for bitcoin dev kit"
@@ -9,16 +9,24 @@ readme = "README.md"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/bitcoindevkit/bdk-reserves"
 
+[features]
+esplora = ["esplora-client", "rustls"]
+
 [dependencies]
 bdk_wallet = { version = "3.2", default-features = false, features = ["std"] }
 bitcoinconsensus = "0.106"
 log = "^0.4"
+esplora-client = { version = "0.13", optional = true, default-features = false, features = [ "async", "async-https", "tokio"] }
 
 # same version as in rust-bitcoin - I couldn't find a re-export
 units = { package = "bitcoin-units", version = "0.1", default-features = false, features = ["alloc"] }
+
+# has to be manually synchronized with bdk_esplora until they add a re-export
+rustls = { version = "0.23", optional = true }
 
 [dev-dependencies]
 rstest = "^0.11"
 bdk_wallet = { version = "3.2", default-features = true, features = ["test-utils"] }
 bdk_electrum = "0.24"
 electrsd = { version = "0.41", features = ["download", "bitcoind_download", "bitcoind_29_0", "electrs_0_10_6"] }
+tokio = { version = "1", features = ["full"] }

@@ -31,6 +31,8 @@ use bdk_wallet::bitcoin::{Amount, PubkeyHash, Sequence};
 use bdk_wallet::chain::ChainPosition;
 use bdk_wallet::{AddForeignUtxoError, TxOrdering, Wallet};
 use bdk_wallet::{error::CreateTxError, signer::SignerError};
+#[cfg(feature = "esplora")]
+use esplora_client;
 use units::weight::Weight;
 
 /// The API for proof of reserves
@@ -93,6 +95,10 @@ pub enum ProofError {
     Sign(SignerError),
     /// Most likely trying to inflate the amount
     DuplicateUtxo,
+    /// Error with the Esplora connection
+    EsploraError,
+    /// For the moment only supporting witness
+    WitnessMissing,
 }
 
 impl From<AddForeignUtxoError> for ProofError {
@@ -356,6 +362,61 @@ fn challenge_txin(message: &str) -> TxIn {
     }
 }
 
+pub struct OutpointsHeight {
+    pub outpoints: Vec<(OutPoint, TxOut)>,
+    pub unspent_height: u32,
+}
+
+/// collect the information necessary to validate a proof
+/// currently only works with witness transactions
+/// In addition to the UTXOs, also returns the last block before the first UTXO was spent
+/// This allows to validate proofs that no longer hold, but were valid in the past
+#[cfg(feature = "esplora")]
+pub async fn verify_prevouts(
+    psbt: &Psbt,
+    url: &str,
+    _height: Option<usize>,
+) -> Result<OutpointsHeight, ProofError> {
+    let client = esplora_client::Builder::new(url)
+        .header("user-agent", "bdk-reserves/3")
+        .build_async()
+        .map_err(|_| ProofError::EsploraError)?;
+    let current_height = client
+        .get_height()
+        .await
+        .map_err(|_| ProofError::EsploraError)?;
+
+    let mut utxos = Vec::<(OutPoint, TxOut)>::new();
+    let mut unspent_height = current_height;
+
+    for (txin, inp) in psbt.unsigned_tx.input.iter().zip(psbt.inputs.iter()) {
+        let ostat = client
+            .get_output_status(&txin.previous_output.txid, txin.previous_output.vout.into())
+            .await
+            .map_err(|_| ProofError::EsploraError)?
+            .ok_or(ProofError::EsploraError)?;
+        if ostat.spent {
+            let spent_state = ostat.status.ok_or(ProofError::MissingConfirmationInfo)?;
+            if spent_state.confirmed {
+                unspent_height = std::cmp::min(
+                    unspent_height,
+                    spent_state.block_height.ok_or(ProofError::EsploraError)? - 1,
+                );
+            }
+        }
+
+        let op = txin.previous_output;
+        if let Some(wutxo) = &inp.witness_utxo {
+            utxos.push((op, wutxo.clone()));
+        }
+    }
+
+    Ok(OutpointsHeight {
+        outpoints: utxos,
+        unspent_height,
+    })
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -393,6 +454,25 @@ mod test {
         let expected = r#"cHNidP8BAH4CAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////MQvsP2eDTCk3vWfQJ50IOFWLwuTHPsnYikR1hosdK0sAAAAAAP3///8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qAQhrAkcwRAIgMjk39sEdlh9VEb0GOKNy+C/X4yiZd4/AteVnZjdSuPYCIBQKVpBGTpUSZNoXqT93EucKLLFVQnLJIkPXKjRYO4eJASEDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+MAAA=="#;
 
         assert_eq!(psbt_b64, expected);
+    }
+
+    #[cfg(feature = "esplora")]
+    #[tokio::test]
+    async fn test_fetch_empty() {
+        let _ = rustls::crypto::CryptoProvider::install_default(
+            rustls::crypto::aws_lc_rs::default_provider(),
+        );
+
+        let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
+        let (mut wallet, _) = get_funded_wallet_single(descriptor);
+        let message = "This is a test";
+        let psbt = wallet.create_proof(message).unwrap();
+
+        let outpoints = verify_prevouts(&psbt, "https://ax102.blockeng.ch/", None)
+            .await
+            .unwrap();
+
+        assert_eq!(outpoints.outpoints.len(), 2);
     }
 
     #[test]
