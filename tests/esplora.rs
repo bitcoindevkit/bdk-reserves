@@ -6,6 +6,8 @@ use bdk_wallet::bitcoin::{
     base64::{Engine as _, engine::general_purpose::STANDARD},
     psbt::Psbt,
 };
+#[cfg(feature = "esplora")]
+use chrono::{Datelike, Local};
 
 #[cfg(feature = "esplora")]
 #[tokio::test]
@@ -18,19 +20,13 @@ async fn test_esplora_active() {
     let psbt = decode_tx(&psbt);
     assert_eq!(psbt.unsigned_tx.input.len(), 20);
 
-    let outheight = verify_prevouts(&psbt, "https://blockstream.info/testnet/api/", None)
+    let message = "Stored in AMINA Bank AG cold storage";
+    let pres = verify_proof_online(&psbt, message, "https://blockstream.info/testnet/api/")
         .await
         .unwrap();
-    assert_eq!(outheight.outpoints.len(), 20);
-    assert!(
-        outheight.unspent_height > 971104,
-        "unspent_height ({}) > 971104",
-        outheight.unspent_height
-    );
 
-    let message = "Stored in AMINA Bank AG cold storage";
-    let amount = verify_proof(&psbt, message, outheight.outpoints).unwrap();
-    assert_eq!(amount, Amount::from_sat(922_739));
+    assert_eq!(pres.value, Amount::from_sat(922_739));
+    assert_eq!(pres.timestamp.year(), Local::now().year());
 }
 
 #[cfg(feature = "esplora")]
@@ -44,15 +40,13 @@ async fn test_esplora_spent() {
     let psbt = decode_tx(&psbt);
     assert_eq!(psbt.unsigned_tx.input.len(), 19);
 
-    let outheight = verify_prevouts(&psbt, "https://blockstream.info/testnet/api/", None)
+    let message = "Stored in SEBA Bank AG cold storage";
+    let pres = verify_proof_online(&psbt, message, "https://blockstream.info/testnet/api/")
         .await
         .unwrap();
-    assert_eq!(outheight.outpoints.len(), 19);
-    assert_eq!(outheight.unspent_height, 2133038);
 
-    let message = "Stored in SEBA Bank AG cold storage";
-    let amount = verify_proof(&psbt, message, outheight.outpoints).unwrap();
-    assert_eq!(amount, Amount::from_sat(53_865_580));
+    assert_eq!(pres.value, Amount::from_sat(53_865_580));
+    assert_eq!(format!("{:?}", pres.timestamp), "2021-12-23T12:48:12Z");
 }
 
 #[cfg(feature = "esplora")]

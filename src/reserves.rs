@@ -32,6 +32,8 @@ use bdk_wallet::chain::ChainPosition;
 use bdk_wallet::{AddForeignUtxoError, TxOrdering, Wallet};
 use bdk_wallet::{error::CreateTxError, signer::SignerError};
 #[cfg(feature = "esplora")]
+use chrono::{DateTime, Utc};
+#[cfg(feature = "esplora")]
 use esplora_client;
 use units::weight::Weight;
 
@@ -211,9 +213,6 @@ impl ProofOfReserves for Wallet {
 
 /// Make sure this is a proof, and not a spendable transaction.
 /// Make sure the proof is valid.
-/// Currently proofs can only be validated against the tip of the chain.
-/// If some of the UTXOs in the proof were spent in the meantime, the proof will fail.
-/// We can currently not validate whether it was valid at a certain block height.
 /// Since the caller provides the outpoints, he is also responsible to make sure they have enough confirmations.
 /// Returns the spendable amount of the proof.
 pub fn verify_proof(
@@ -362,9 +361,33 @@ fn challenge_txin(message: &str) -> TxIn {
     }
 }
 
-pub struct OutpointsHeight {
+#[cfg(feature = "esplora")]
+pub struct ProofResult {
+    pub value: Amount,
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Make sure this is a proof, and not a spendable transaction.
+/// Make sure the proof is valid.
+/// Verifies the outpoints online with an esplora server.
+#[cfg(feature = "esplora")]
+pub async fn verify_proof_online(
+    psbt: &Psbt,
+    message: &str,
+    url: &str,
+) -> Result<ProofResult, ProofError> {
+    let outheight = verify_prevouts(psbt, url).await?;
+    let amount = verify_proof(psbt, message, outheight.outpoints)?;
+    Ok(ProofResult {
+        value: amount,
+        timestamp: outheight.timestamp,
+    })
+}
+
+#[cfg(feature = "esplora")]
+struct OutpointsHeight {
     pub outpoints: Vec<(OutPoint, TxOut)>,
-    pub unspent_height: u32,
+    pub timestamp: DateTime<Utc>,
 }
 
 /// collect the information necessary to validate a proof
@@ -372,11 +395,7 @@ pub struct OutpointsHeight {
 /// In addition to the UTXOs, also returns the last block before the first UTXO was spent
 /// This allows to validate proofs that no longer hold, but were valid in the past
 #[cfg(feature = "esplora")]
-pub async fn verify_prevouts(
-    psbt: &Psbt,
-    url: &str,
-    _height: Option<usize>,
-) -> Result<OutpointsHeight, ProofError> {
+async fn verify_prevouts(psbt: &Psbt, url: &str) -> Result<OutpointsHeight, ProofError> {
     let client = esplora_client::Builder::new(url)
         .header("user-agent", "bdk-reserves/3")
         .build_async()
@@ -411,9 +430,25 @@ pub async fn verify_prevouts(
         }
     }
 
+    let blockinfo = &client
+        .get_block_infos(Some(unspent_height))
+        .await
+        .map_err(|_| ProofError::EsploraError)?[0];
+    if blockinfo.height != unspent_height {
+        return Err(ProofError::EsploraError);
+    }
+    let timestamp = DateTime::from_timestamp(
+        blockinfo
+            .timestamp
+            .try_into()
+            .map_err(|_| ProofError::EsploraError)?,
+        0,
+    )
+    .ok_or(ProofError::EsploraError)?;
+
     Ok(OutpointsHeight {
         outpoints: utxos,
-        unspent_height,
+        timestamp,
     })
 }
 
@@ -454,25 +489,6 @@ mod test {
         let expected = r#"cHNidP8BAH4CAAAAAmw1RvG4UzfnSafpx62EPTyha6VslP0Er7n3TxjEpeBeAAAAAAD/////MQvsP2eDTCk3vWfQJ50IOFWLwuTHPsnYikR1hosdK0sAAAAAAP3///8BUMMAAAAAAAAZdqkUn3/QltN+0sDj9/DPySS+70/862iIrAAAAAAAAQEKAAAAAAAAAAABUQEHAAABAR9QwwAAAAAAABYAFOzlJlcQU9qGRUyeBmd56vnRUC5qAQhrAkcwRAIgMjk39sEdlh9VEb0GOKNy+C/X4yiZd4/AteVnZjdSuPYCIBQKVpBGTpUSZNoXqT93EucKLLFVQnLJIkPXKjRYO4eJASEDKwVYB4vsOGlKhJM9ZZMD4lddrn6RaFkRRUEVv9ZEh+MAAA=="#;
 
         assert_eq!(psbt_b64, expected);
-    }
-
-    #[cfg(feature = "esplora")]
-    #[tokio::test]
-    async fn test_fetch_empty() {
-        let _ = rustls::crypto::CryptoProvider::install_default(
-            rustls::crypto::aws_lc_rs::default_provider(),
-        );
-
-        let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
-        let (mut wallet, _) = get_funded_wallet_single(descriptor);
-        let message = "This is a test";
-        let psbt = wallet.create_proof(message).unwrap();
-
-        let outpoints = verify_prevouts(&psbt, "https://ax102.blockeng.ch/", None)
-            .await
-            .unwrap();
-
-        assert_eq!(outpoints.outpoints.len(), 2);
     }
 
     #[test]

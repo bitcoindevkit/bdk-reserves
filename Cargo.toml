@@ -10,13 +10,14 @@ license = "MIT OR Apache-2.0"
 repository = "https://github.com/bitcoindevkit/bdk-reserves"
 
 [features]
-esplora = ["esplora-client", "rustls"]
+esplora = ["esplora-client", "rustls", "chrono"]
 
 [dependencies]
 bdk_wallet = { version = "3.2", default-features = false, features = ["std"] }
 bitcoinconsensus = "0.106"
 log = "^0.4"
 esplora-client = { version = "0.13", optional = true, default-features = false, features = [ "async", "async-https", "tokio"] }
+chrono = { version = "0.4", optional = true }
 
 # same version as in rust-bitcoin - I couldn't find a re-export
 units = { package = "bitcoin-units", version = "0.1", default-features = false, features = ["alloc"] }
