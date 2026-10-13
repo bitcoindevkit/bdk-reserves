@@ -91,6 +91,8 @@ pub enum ProofError {
     Wallet(bdk_wallet::descriptor::error::Error),
     /// Failed to sign a transaction
     Sign(SignerError),
+    /// Most likely trying to inflate the amount
+    DuplicateUtxo,
 }
 
 impl From<AddForeignUtxoError> for ProofError {
@@ -229,6 +231,19 @@ pub fn verify_proof(
         return Err(ProofError::WrongNumberOfInputs);
     }
 
+    // verify that UTXOs are not duplicated
+    let mut utxos = tx
+        .input
+        .iter()
+        .skip(1)
+        .map(|inp| inp.previous_output)
+        .collect::<Vec<OutPoint>>();
+    utxos.sort_unstable();
+    utxos.dedup();
+    if utxos.len() + 1 != tx.input.len() {
+        return Err(ProofError::DuplicateUtxo);
+    }
+
     // verify the challenge txin
     let challenge_txin = challenge_txin(message);
     if tx.input[0].previous_output != challenge_txin.previous_output {
@@ -282,7 +297,7 @@ pub fn verify_proof(
         return Err(ProofError::InAndOutValueNotEqual);
     }
 
-    // verify the unspendable output
+    // verify the unspendable (burn) output
     let pkh = PubkeyHash::from_raw_hash(hash160::Hash::hash(&[0]));
     let out_script_unspendable = ScriptBuf::new_p2pkh(&pkh);
 
@@ -367,6 +382,7 @@ mod test {
             trust_witness_utxo: true,
             ..Default::default()
         };
+        #[allow(deprecated)]
         wallet.sign(&mut psbt, signopts).unwrap();
 
         let spendable = wallet.verify_proof(&psbt, message, None).unwrap();
@@ -596,5 +612,31 @@ mod test {
         psbt.unsigned_tx.output[0].value = Amount::from_sat(123);
 
         wallet.verify_proof(&psbt, message, None).unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "DuplicateUtxo")]
+    fn test_duplicate_utxo() {
+        let descriptor = "wpkh(cVpPVruEDdmutPzisEsYvtST1usBR3ntr8pXSyt6D2YYqXRyPcFW)";
+        let (mut wallet, _) = get_funded_wallet_single(descriptor);
+
+        let message = "This belongs to me.";
+        let mut psbt = wallet.create_proof(message).unwrap();
+
+        psbt.inputs.push(psbt.inputs.last().unwrap().clone());
+        psbt.unsigned_tx
+            .input
+            .push(psbt.unsigned_tx.input.last().unwrap().clone());
+        psbt.unsigned_tx.output[0].value = Amount::from_sat(100_000);
+
+        let signopts = SignOptions {
+            trust_witness_utxo: true,
+            ..Default::default()
+        };
+        #[allow(deprecated)]
+        wallet.sign(&mut psbt, signopts).unwrap();
+
+        let spendable = wallet.verify_proof(&psbt, message, None).unwrap();
+        assert_eq!(spendable, Amount::from_sat(100_000));
     }
 }

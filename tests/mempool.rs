@@ -41,6 +41,7 @@ fn unconfirmed() -> Result<(), ProofError> {
         trust_witness_utxo: true,
         ..Default::default()
     };
+    #[allow(deprecated)]
     let finalized = wallet.sign(&mut psbt, signopts.clone())?;
     assert!(finalized);
     client
@@ -53,6 +54,7 @@ fn unconfirmed() -> Result<(), ProofError> {
 
     let message = "This belongs to me.";
     let mut psbt = wallet.create_proof(message)?;
+    #[allow(deprecated)]
     let finalized = wallet.sign(&mut psbt, signopts)?;
     assert!(finalized);
 
@@ -105,6 +107,7 @@ fn confirmed() {
         trust_witness_utxo: true,
         ..Default::default()
     };
+    #[allow(deprecated)]
     let finalized = wallet.sign(&mut psbt, signopts.clone()).unwrap();
     assert!(finalized);
     client
@@ -117,6 +120,7 @@ fn confirmed() {
 
     let message = "This belongs to me.";
     let mut psbt = wallet.create_proof(message).unwrap();
+    #[allow(deprecated)]
     let finalized = wallet.sign(&mut psbt, signopts).unwrap();
     assert!(finalized);
 

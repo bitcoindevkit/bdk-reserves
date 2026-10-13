@@ -85,6 +85,7 @@ impl RegTestEnv {
         let signopts = SignOptions {
             ..Default::default()
         };
+        #[allow(deprecated)]
         let finalized = wallets
             .iter_mut()
             .any(|wallet| wallet.sign(&mut psbt, signopts.clone()).unwrap());

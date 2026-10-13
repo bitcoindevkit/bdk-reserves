@@ -21,6 +21,7 @@ fn test_proof_singlesig(#[case] descriptor: &'static str) -> Result<(), ProofErr
         num_inp
     );
 
+    #[allow(deprecated)]
     let finalized = wallet.sign(
         &mut psbt,
         SignOptions {

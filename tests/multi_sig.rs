@@ -135,10 +135,12 @@ fn test_proof_multisig(
         //remove_partial_sigs: false,
         ..Default::default()
     };
+    #[allow(deprecated)]
     let finalized = wallets[0].sign(&mut psbt, signopts.clone())?;
     assert_eq!(count_signatures(&psbt), (num_inp - 1, 1, 0));
     assert!(!finalized);
 
+    #[allow(deprecated)]
     let finalized = wallets[1].sign(&mut psbt, signopts.clone())?;
     assert_eq!(
         count_signatures(&psbt),
@@ -147,6 +149,7 @@ fn test_proof_multisig(
     assert!(finalized);
 
     // 2 signatures are enough. Just checking what happens...
+    #[allow(deprecated)]
     let finalized = wallets[2].sign(&mut psbt, signopts.clone())?;
     assert_eq!(
         count_signatures(&psbt),
