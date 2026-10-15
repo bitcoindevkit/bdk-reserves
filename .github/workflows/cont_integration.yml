@@ -36,7 +36,7 @@ jobs:
       - name: Update Cargo.lock
         run: cargo update
       - name: Build
-        run: cargo build
+        run: cargo build --all-features
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
       - name: Test

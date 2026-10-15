@@ -31,6 +31,10 @@ use bdk_wallet::bitcoin::{Amount, PubkeyHash, Sequence};
 use bdk_wallet::chain::ChainPosition;
 use bdk_wallet::{AddForeignUtxoError, TxOrdering, Wallet};
 use bdk_wallet::{error::CreateTxError, signer::SignerError};
+#[cfg(feature = "esplora")]
+use chrono::{DateTime, Utc};
+#[cfg(feature = "esplora")]
+use esplora_client;
 use units::weight::Weight;
 
 /// The API for proof of reserves
@@ -93,6 +97,10 @@ pub enum ProofError {
     Sign(SignerError),
     /// Most likely trying to inflate the amount
     DuplicateUtxo,
+    /// Error with the Esplora connection
+    EsploraError,
+    /// For the moment only supporting witness
+    WitnessMissing,
 }
 
 impl From<AddForeignUtxoError> for ProofError {
@@ -205,9 +213,6 @@ impl ProofOfReserves for Wallet {
 
 /// Make sure this is a proof, and not a spendable transaction.
 /// Make sure the proof is valid.
-/// Currently proofs can only be validated against the tip of the chain.
-/// If some of the UTXOs in the proof were spent in the meantime, the proof will fail.
-/// We can currently not validate whether it was valid at a certain block height.
 /// Since the caller provides the outpoints, he is also responsible to make sure they have enough confirmations.
 /// Returns the spendable amount of the proof.
 pub fn verify_proof(
@@ -354,6 +359,97 @@ fn challenge_txin(message: &str) -> TxIn {
         sequence: Sequence(0xFFFFFFFF),
         ..Default::default()
     }
+}
+
+#[cfg(feature = "esplora")]
+pub struct ProofResult {
+    pub value: Amount,
+    pub timestamp: DateTime<Utc>,
+}
+
+/// Make sure this is a proof, and not a spendable transaction.
+/// Make sure the proof is valid.
+/// Verifies the outpoints online with an esplora server.
+#[cfg(feature = "esplora")]
+pub async fn verify_proof_online(
+    psbt: &Psbt,
+    message: &str,
+    url: &str,
+) -> Result<ProofResult, ProofError> {
+    let outheight = verify_prevouts(psbt, url).await?;
+    let amount = verify_proof(psbt, message, outheight.outpoints)?;
+    Ok(ProofResult {
+        value: amount,
+        timestamp: outheight.timestamp,
+    })
+}
+
+#[cfg(feature = "esplora")]
+struct OutpointsHeight {
+    pub outpoints: Vec<(OutPoint, TxOut)>,
+    pub timestamp: DateTime<Utc>,
+}
+
+/// collect the information necessary to validate a proof
+/// currently only works with witness transactions
+/// In addition to the UTXOs, also returns the last block before the first UTXO was spent
+/// This allows to validate proofs that no longer hold, but were valid in the past
+#[cfg(feature = "esplora")]
+async fn verify_prevouts(psbt: &Psbt, url: &str) -> Result<OutpointsHeight, ProofError> {
+    let client = esplora_client::Builder::new(url)
+        .header("user-agent", "bdk-reserves/3")
+        .build_async()
+        .map_err(|_| ProofError::EsploraError)?;
+    let current_height = client
+        .get_height()
+        .await
+        .map_err(|_| ProofError::EsploraError)?;
+
+    let mut utxos = Vec::<(OutPoint, TxOut)>::new();
+    let mut unspent_height = current_height;
+
+    for (txin, inp) in psbt.unsigned_tx.input.iter().zip(psbt.inputs.iter()) {
+        let ostat = client
+            .get_output_status(&txin.previous_output.txid, txin.previous_output.vout.into())
+            .await
+            .map_err(|_| ProofError::EsploraError)?
+            .ok_or(ProofError::EsploraError)?;
+        if ostat.spent {
+            let spent_state = ostat.status.ok_or(ProofError::MissingConfirmationInfo)?;
+            if spent_state.confirmed {
+                unspent_height = std::cmp::min(
+                    unspent_height,
+                    spent_state.block_height.ok_or(ProofError::EsploraError)? - 1,
+                );
+            }
+        }
+
+        let op = txin.previous_output;
+        if let Some(wutxo) = &inp.witness_utxo {
+            utxos.push((op, wutxo.clone()));
+        }
+    }
+
+    let blockinfo = &client
+        .get_block_infos(Some(unspent_height))
+        .await
+        .map_err(|_| ProofError::EsploraError)?[0];
+    if blockinfo.height != unspent_height {
+        return Err(ProofError::EsploraError);
+    }
+    let timestamp = DateTime::from_timestamp(
+        blockinfo
+            .timestamp
+            .try_into()
+            .map_err(|_| ProofError::EsploraError)?,
+        0,
+    )
+    .ok_or(ProofError::EsploraError)?;
+
+    Ok(OutpointsHeight {
+        outpoints: utxos,
+        timestamp,
+    })
 }
 
 #[cfg(test)]
